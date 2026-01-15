@@ -75,6 +75,7 @@ export default function PoolAuthority() {
   const [showCompleteServiceModal, setShowCompleteServiceModal] = useState(false);
   const [serviceToComplete, setServiceToComplete] = useState(null);
   const [serviceChemicals, setServiceChemicals] = useState([]);
+  const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
   const [editingService, setEditingService] = useState(null);
   const [showEditServiceModal, setShowEditServiceModal] = useState(false);
   const [selectedCustomerBilling, setSelectedCustomerBilling] = useState(null);
@@ -306,6 +307,7 @@ Best regards,
   const openCompleteServiceModal = (customer) => {
     setServiceToComplete(customer);
     setServiceChemicals([]);
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
     setShowCompleteServiceModal(true);
   };
 
@@ -341,6 +343,9 @@ Best regards,
       totalCost: c.quantityUsed * c.costPerUnit
     }));
     
+    // Only include water test if any values were entered
+    const hasWaterTest = serviceWaterTest.chlorine || serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.cya || serviceWaterTest.hardness;
+    
     const service = {
       id: Date.now(),
       customerId: serviceToComplete.id,
@@ -350,7 +355,9 @@ Best regards,
       chemicalCost,
       chemicalsUsed,
       totalAmount: (serviceToComplete.isOneTimeJob ? serviceToComplete.jobPrice : serviceToComplete.weeklyRate) + chemicalCost,
-      poolType: serviceToComplete.poolType || serviceToComplete.jobType || 'service'
+      poolType: serviceToComplete.poolType || serviceToComplete.jobType || 'service',
+      waterTest: hasWaterTest ? { ...serviceWaterTest } : null,
+      serviceNotes: serviceWaterTest.notes || ''
     };
     saveHistory([service, ...serviceHistory]);
     
@@ -367,6 +374,7 @@ Best regards,
     setShowCompleteServiceModal(false);
     setServiceToComplete(null);
     setServiceChemicals([]);
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
   };
 
   // Quick complete without chemicals (legacy support)
@@ -3860,7 +3868,7 @@ Best regards,
             <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-green-700">✓ Complete Service</h3>
-                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); }} className="text-gray-500 hover:text-gray-700">
+                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' }); }} className="text-gray-500 hover:text-gray-700">
                   <Icons.X />
                 </button>
               </div>
@@ -3880,6 +3888,77 @@ Best regards,
                 <span className="text-xl font-bold text-blue-700">
                   ${(serviceToComplete.isOneTimeJob ? serviceToComplete.jobPrice : serviceToComplete.weeklyRate).toFixed(2)}
                 </span>
+              </div>
+
+              {/* Water Test Results */}
+              <div className="mb-4">
+                <h4 className="font-bold text-gray-700 mb-2">💧 Water Test Results</h4>
+                <div className="bg-cyan-50 p-3 rounded-lg">
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Chlorine (ppm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="0-10"
+                        value={serviceWaterTest.chlorine}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, chlorine: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">pH</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="6.8-8.0"
+                        value={serviceWaterTest.ph}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, ph: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Alkalinity</label>
+                      <input
+                        type="number"
+                        placeholder="80-120"
+                        value={serviceWaterTest.alkalinity}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, alkalinity: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">CYA</label>
+                      <input
+                        type="number"
+                        placeholder="30-50"
+                        value={serviceWaterTest.cya}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, cya: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Hardness</label>
+                      <input
+                        type="number"
+                        placeholder="200-400"
+                        value={serviceWaterTest.hardness}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, hardness: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Service Notes</label>
+                    <textarea
+                      placeholder="Pool condition, issues noticed, work performed..."
+                      value={serviceWaterTest.notes}
+                      onChange={e => setServiceWaterTest({ ...serviceWaterTest, notes: e.target.value })}
+                      className="w-full px-2 py-1 border rounded text-sm"
+                      rows="2"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Add Chemicals */}
@@ -3990,7 +4069,7 @@ Best regards,
               {/* Complete Button */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); }}
+                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' }); }}
                   className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
                 >
                   Cancel
@@ -5465,7 +5544,13 @@ Best regards,
           </div>
         )}
       </div>
+      
+      {/* Version Footer */}
+      <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
+        v1.2.0
+      </div>
     </div>
   );
 }
+
 
