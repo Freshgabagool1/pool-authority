@@ -31,6 +31,20 @@ const Icons = {
   Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
 };
 
+// Helper to get local date string (YYYY-MM-DD) without timezone issues
+const getLocalDateString = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getLocalMonthString = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 export default function PoolAuthority() {
   // State
   const [customers, setCustomers] = useState([]);
@@ -46,10 +60,10 @@ export default function PoolAuthority() {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [routeCustomers, setRouteCustomers] = useState([]);
   const [showMap, setShowMap] = useState(false);
-  const [routeDate, setRouteDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [routeDate, setRouteDate] = useState(getLocalDateString());
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [calendarDate, setCalendarDate] = useState(new Date());
-  const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [invoiceMonth, setInvoiceMonth] = useState(getLocalMonthString());
   const [showCustomInvoice, setShowCustomInvoice] = useState(false);
   const [showCreateQuote, setShowCreateQuote] = useState(false);
   const [quotes, setQuotes] = useState([]);
@@ -74,6 +88,11 @@ export default function PoolAuthority() {
   const [jobToComplete, setJobToComplete] = useState(null);
   const [jobCompletionItems, setJobCompletionItems] = useState([]);
   const [jobChemicals, setJobChemicals] = useState([]);
+  
+  // Email state
+  const [emailLog, setEmailLog] = useState([]);
+  const [emailNotification, setEmailNotification] = useState(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Company Settings & Email Templates
   const [companySettings, setCompanySettings] = useState({
@@ -182,8 +201,8 @@ Best regards,
   useEffect(() => {
     const loadData = () => {
       try {
-        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates'];
-        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates];
+        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log'];
+        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog];
         for (let i = 0; i < keys.length; i++) {
           const result = localStorage.getItem(keys[i]);
           if (result) {
@@ -219,6 +238,7 @@ Best regards,
   const saveWearItems = (data) => saveData('pool-wear-items', data, setWearItems);
   const saveCompanySettings = (data) => saveData('pool-company-settings', data, setCompanySettings);
   const saveEmailTemplates = (data) => saveData('pool-email-templates', data, setEmailTemplates);
+  const saveEmailLog = (data) => saveData('pool-email-log', data, setEmailLog);
 
   // Customer functions
   const addCustomer = () => {
@@ -450,7 +470,7 @@ Best regards,
 
   const formatRouteDate = (dateStr) => {
     const date = new Date(dateStr);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString();
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
@@ -1128,6 +1148,176 @@ Best regards,
     ));
   };
 
+  // Email Functions
+  const showEmailNotification = (type, message) => {
+    setEmailNotification({ type, message });
+    setTimeout(() => setEmailNotification(null), 4000);
+  };
+
+  const sendInvoiceEmail = async (customer, invoiceData, paymentLink = null) => {
+    if (!customer.email) {
+      showEmailNotification('error', 'Customer has no email address');
+      return false;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch(`${PAYMENT_SERVER_URL}/send-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          template: emailTemplates.monthlyInvoice,
+          data: {
+            customer_name: customer.name,
+            month: invoiceData.month,
+            service_summary: invoiceData.serviceSummary,
+            subtotal: invoiceData.subtotal.toFixed(2),
+            chemical_total: invoiceData.chemicalTotal.toFixed(2),
+            total: invoiceData.total.toFixed(2)
+          },
+          companySettings,
+          paymentLink
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Log the email
+        const logEntry = {
+          id: Date.now(),
+          type: 'invoice',
+          to: customer.email,
+          customerName: customer.name,
+          subject: `Invoice for ${invoiceData.month}`,
+          sentDate: new Date().toISOString(),
+          status: 'sent'
+        };
+        saveEmailLog([logEntry, ...emailLog]);
+        showEmailNotification('success', `Invoice sent to ${customer.email}`);
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      showEmailNotification('error', `Failed to send email: ${error.message}`);
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const sendWeeklyUpdateEmail = async (customer, serviceData) => {
+    if (!customer.email) {
+      showEmailNotification('error', 'Customer has no email address');
+      return false;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const chemicalsUsed = serviceData.chemicalsUsed?.length > 0
+        ? serviceData.chemicalsUsed.map(c => `• ${c.name}: ${c.quantity} ${c.unit}`).join('\n')
+        : '';
+
+      const response = await fetch(`${PAYMENT_SERVER_URL}/send-weekly-update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          template: emailTemplates.weeklyUpdate,
+          data: {
+            customer_name: customer.name,
+            service_date: new Date(serviceData.date).toLocaleDateString(),
+            chemicals_used: chemicalsUsed
+          },
+          companySettings
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        const logEntry = {
+          id: Date.now(),
+          type: 'weekly-update',
+          to: customer.email,
+          customerName: customer.name,
+          subject: 'Weekly Pool Service Update',
+          sentDate: new Date().toISOString(),
+          status: 'sent'
+        };
+        saveEmailLog([logEntry, ...emailLog]);
+        showEmailNotification('success', `Weekly update sent to ${customer.email}`);
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      showEmailNotification('error', `Failed to send email: ${error.message}`);
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const sendQuoteEmail = async (customer, quote) => {
+    if (!customer.email) {
+      showEmailNotification('error', 'Customer has no email address');
+      return false;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const lineItems = quote.items.map(i => `• ${i.description} - $${i.amount.toFixed(2)}`).join('\n');
+
+      const response = await fetch(`${PAYMENT_SERVER_URL}/send-quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          template: emailTemplates.quote,
+          data: {
+            customer_name: customer.name,
+            quote_number: quote.quoteNumber,
+            quote_date: new Date(quote.date).toLocaleDateString(),
+            valid_days: '30',
+            line_items: lineItems,
+            total: quote.total.toFixed(2)
+          },
+          companySettings
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        const logEntry = {
+          id: Date.now(),
+          type: 'quote',
+          to: customer.email,
+          customerName: customer.name,
+          subject: `Quote #${quote.quoteNumber}`,
+          sentDate: new Date().toISOString(),
+          status: 'sent'
+        };
+        saveEmailLog([logEntry, ...emailLog]);
+        showEmailNotification('success', `Quote sent to ${customer.email}`);
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      showEmailNotification('error', `Failed to send email: ${error.message}`);
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const updateQuoteStatus = (quoteId, status) => {
     saveQuotes(quotes.map(q => q.id === quoteId ? { ...q, status } : q));
   };
@@ -1141,7 +1331,7 @@ Best regards,
       customerId: quote.customerId,
       customerName: quote.customerName,
       jobType: 'quoted-work',
-      date: new Date().toISOString().split('T')[0],
+      date: getLocalDateString(),
       price: quote.total,
       notes: `From Quote ${quote.quoteNumber}: ${quote.items.map(i => i.description).join(', ')}`,
       quoteId: quote.id
@@ -1612,6 +1802,16 @@ Best regards,
 
   return (
     <div className="min-h-screen pb-8" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
+      {/* Email Notification Popup */}
+      {emailNotification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center gap-3 animate-pulse ${
+          emailNotification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <span className="text-xl">{emailNotification.type === 'success' ? '✓' : '✗'}</span>
+          <span>{emailNotification.message}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white shadow-lg border-b-4 sticky top-0 z-40" style={{ borderColor: '#5bb4d8' }}>
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -1872,7 +2072,7 @@ Best regards,
                   for (let day = 1; day <= daysInMonth; day++) {
                     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const events = getEventsForDate(dateStr);
-                    const isToday = dateStr === new Date().toISOString().split('T')[0];
+                    const isToday = dateStr === getLocalDateString();
                     const isSelected = dateStr === selectedDate;
                     const hasEvents = events.jobs.length > 0 || events.recurring.length > 0 || events.completed.length > 0;
                     
@@ -2053,10 +2253,10 @@ Best regards,
                   <Icons.ChevronRight />
                 </button>
               </div>
-              {routeDate !== new Date().toISOString().split('T')[0] && (
+              {routeDate !== getLocalDateString() && (
                 <div className="mt-3 text-center">
                   <button
-                    onClick={() => setRouteDate(new Date().toISOString().split('T')[0])}
+                    onClick={() => setRouteDate(getLocalDateString())}
                     className="text-sm text-blue-600 hover:text-blue-800 underline"
                   >
                     Jump to Today
@@ -2562,7 +2762,7 @@ Best regards,
                   <input
                     type="date"
                     id="recurringStart"
-                    defaultValue={new Date().toISOString().split('T')[0]}
+                    defaultValue={getLocalDateString()}
                     className="w-full px-4 py-2 border rounded-lg"
                   />
                 </div>
@@ -4351,6 +4551,24 @@ Best regards,
                               PDF
                             </button>
                             <button
+                              onClick={async () => {
+                                const monthName = new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                                const serviceSummary = `${services.length} service${services.length !== 1 ? 's' : ''} @ $${customer.weeklyRate}/visit`;
+                                await sendInvoiceEmail(customer, {
+                                  month: monthName,
+                                  serviceSummary,
+                                  subtotal: serviceTotal,
+                                  chemicalTotal,
+                                  total
+                                });
+                              }}
+                              disabled={services.length === 0 || !customer.email || isSendingEmail}
+                              className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-xs"
+                              title={!customer.email ? 'Customer has no email' : 'Send invoice email'}
+                            >
+                              📧 Email
+                            </button>
+                            <button
                               onClick={() => openPaymentRequest(customer.id, total, `Monthly service - ${new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`)}
                               disabled={services.length === 0 || total === 0}
                               className="px-2 py-1 text-white rounded disabled:bg-gray-300 text-xs"
@@ -5185,9 +5403,69 @@ Best regards,
                 </ol>
               </div>
             </div>
+
+            {/* Email Log */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">📬 Email History</h2>
+                {emailLog.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Clear all email history?')) {
+                        saveEmailLog([]);
+                      }
+                    }}
+                    className="text-sm text-red-600 hover:text-red-800"
+                  >
+                    Clear History
+                  </button>
+                )}
+              </div>
+              
+              {emailLog.length > 0 ? (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {emailLog.slice(0, 50).map(log => (
+                    <div key={log.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className={`text-lg ${log.status === 'sent' ? 'text-green-500' : 'text-red-500'}`}>
+                          {log.status === 'sent' ? '✓' : '✗'}
+                        </span>
+                        <div>
+                          <div className="font-medium text-gray-800">{log.customerName}</div>
+                          <div className="text-sm text-gray-500">{log.subject}</div>
+                          <div className="text-xs text-gray-400">{log.to}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">
+                          {new Date(log.sentDate).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {new Date(log.sentDate).toLocaleTimeString()}
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          log.type === 'invoice' ? 'bg-blue-100 text-blue-700' :
+                          log.type === 'weekly-update' ? 'bg-green-100 text-green-700' :
+                          'bg-purple-100 text-purple-700'
+                        }`}>
+                          {log.type}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-2">📭</div>
+                  <p>No emails sent yet</p>
+                  <p className="text-sm">Emails will appear here when you send invoices, quotes, or updates</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
+
