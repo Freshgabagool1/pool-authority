@@ -121,9 +121,9 @@ Please find your invoice for pool services in {{month}}.
 **Invoice Summary:**
 {{service_summary}}
 
-**Subtotal:** ${{subtotal}}
-**Chemicals:** ${{chemical_total}}
-**Total Due:** ${{total}}
+**Subtotal:** \${{subtotal}}
+**Chemicals:** \${{chemical_total}}
+**Total Due:** \${{total}}
 
 {{#if payment_link}}
 **Pay Online:** {{payment_link}}
@@ -150,7 +150,7 @@ Thank you for your interest in our services! Here's your quote:
 **Services:**
 {{line_items}}
 
-**Total:** ${{total}}
+**Total:** \${{total}}
 
 To accept this quote, simply reply to this email or give us a call.
 
