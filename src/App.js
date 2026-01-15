@@ -76,6 +76,7 @@ export default function PoolAuthority() {
   const [serviceToComplete, setServiceToComplete] = useState(null);
   const [serviceChemicals, setServiceChemicals] = useState([]);
   const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
+  const [sendEmailOnComplete, setSendEmailOnComplete] = useState(true);
   const [editingService, setEditingService] = useState(null);
   const [showEditServiceModal, setShowEditServiceModal] = useState(false);
   const [selectedCustomerBilling, setSelectedCustomerBilling] = useState(null);
@@ -118,9 +119,17 @@ Here's your weekly pool service update from {{company_name}}.
 **Service Date:** {{service_date}}
 **Services Performed:** Weekly maintenance, chemical balancing, skimming, vacuuming
 
+{{#if water_test}}
+**Water Test Results:** {{water_test}}
+{{/if}}
+
 {{#if chemicals_used}}
 **Chemicals Applied:**
 {{chemicals_used}}
+{{/if}}
+
+{{#if service_notes}}
+**Notes:** {{service_notes}}
 {{/if}}
 
 **Pool Status:** Your pool is looking great! ✓
@@ -330,7 +339,7 @@ Best regards,
   };
 
   // Complete the service with chemicals
-  const completeServiceWithChemicals = () => {
+  const completeServiceWithChemicals = async () => {
     if (!serviceToComplete) return;
     
     const chemicalCost = serviceChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0);
@@ -370,6 +379,16 @@ Best regards,
       return chem;
     });
     saveChemicals(updatedChemicals);
+    
+    // Auto-send weekly update email if enabled and customer has email
+    if (sendEmailOnComplete && serviceToComplete.email) {
+      await sendWeeklyUpdateEmail(serviceToComplete, {
+        date: service.date,
+        chemicalsUsed: chemicalsUsed,
+        waterTest: hasWaterTest ? serviceWaterTest : null,
+        notes: serviceWaterTest.notes
+      });
+    }
     
     setShowCompleteServiceModal(false);
     setServiceToComplete(null);
@@ -1228,6 +1247,21 @@ Best regards,
       const chemicalsUsed = serviceData.chemicalsUsed?.length > 0
         ? serviceData.chemicalsUsed.map(c => `• ${c.name}: ${c.quantity} ${c.unit}`).join('\n')
         : '';
+      
+      // Format water test results if available
+      let waterTestResults = '';
+      if (serviceData.waterTest) {
+        const wt = serviceData.waterTest;
+        const results = [];
+        if (wt.chlorine) results.push(`Chlorine: ${wt.chlorine} ppm`);
+        if (wt.ph) results.push(`pH: ${wt.ph}`);
+        if (wt.alkalinity) results.push(`Alkalinity: ${wt.alkalinity}`);
+        if (wt.cya) results.push(`CYA: ${wt.cya}`);
+        if (wt.hardness) results.push(`Hardness: ${wt.hardness}`);
+        if (results.length > 0) {
+          waterTestResults = results.join(' | ');
+        }
+      }
 
       const response = await fetch(`${PAYMENT_SERVER_URL}/send-weekly-update`, {
         method: 'POST',
@@ -1238,7 +1272,9 @@ Best regards,
           data: {
             customer_name: customer.name,
             service_date: new Date(serviceData.date).toLocaleDateString(),
-            chemicals_used: chemicalsUsed
+            chemicals_used: chemicalsUsed,
+            water_test: waterTestResults,
+            service_notes: serviceData.notes || ''
           },
           companySettings
         })
@@ -4066,6 +4102,29 @@ Best regards,
                 </div>
               </div>
 
+              {/* Send Email Checkbox */}
+              {serviceToComplete?.email && (
+                <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendEmailOnComplete}
+                      onChange={e => setSendEmailOnComplete(e.target.checked)}
+                      className="w-5 h-5 text-green-600 rounded"
+                    />
+                    <div>
+                      <span className="font-medium text-green-800">📧 Send service report email</span>
+                      <div className="text-xs text-green-600">Will send to: {serviceToComplete.email}</div>
+                    </div>
+                  </label>
+                </div>
+              )}
+              {serviceToComplete && !serviceToComplete.email && (
+                <div className="mb-4 p-3 bg-amber-50 rounded-lg text-sm text-amber-700">
+                  ⚠️ No email on file for this customer. Add their email in the Customers tab to enable service reports.
+                </div>
+              )}
+
               {/* Complete Button */}
               <div className="flex gap-3">
                 <button
@@ -4076,9 +4135,10 @@ Best regards,
                 </button>
                 <button
                   onClick={completeServiceWithChemicals}
-                  className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                  disabled={isSendingEmail}
+                  className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-green-400"
                 >
-                  ✓ Complete Service
+                  {isSendingEmail ? '⏳ Sending...' : '✓ Complete Service'}
                 </button>
               </div>
             </div>
@@ -5547,10 +5607,11 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.2.0
+        v1.3.0
       </div>
     </div>
   );
 }
+
 
 
