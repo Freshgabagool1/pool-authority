@@ -64,6 +64,7 @@ export default function PoolAuthority() {
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [invoiceMonth, setInvoiceMonth] = useState(getLocalMonthString());
+  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('net15');
   const [showCustomInvoice, setShowCustomInvoice] = useState(false);
   const [showCreateQuote, setShowCreateQuote] = useState(false);
   const [quotes, setQuotes] = useState([]);
@@ -75,7 +76,7 @@ export default function PoolAuthority() {
   const [showCompleteServiceModal, setShowCompleteServiceModal] = useState(false);
   const [serviceToComplete, setServiceToComplete] = useState(null);
   const [serviceChemicals, setServiceChemicals] = useState([]);
-  const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
+  const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
   const [sendEmailOnComplete, setSendEmailOnComplete] = useState(true);
   const [editingService, setEditingService] = useState(null);
   const [showEditServiceModal, setShowEditServiceModal] = useState(false);
@@ -90,9 +91,12 @@ export default function PoolAuthority() {
   const [jobToComplete, setJobToComplete] = useState(null);
   const [jobCompletionItems, setJobCompletionItems] = useState([]);
   const [jobChemicals, setJobChemicals] = useState([]);
+  const [jobCompletionNotes, setJobCompletionNotes] = useState('');
+  const [sendJobEmailOnComplete, setSendJobEmailOnComplete] = useState(true);
   
   // Email state
   const [emailLog, setEmailLog] = useState([]);
+  const [billedCustomers, setBilledCustomers] = useState({}); // Track customers billed this month: { 'customerId-YYYY-MM': true }
   const [emailNotification, setEmailNotification] = useState(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
@@ -150,15 +154,23 @@ Please find your invoice for pool services in {{month}}.
 **Invoice Summary:**
 {{service_summary}}
 
+{{#if itemized_services}}
+**Service Details:**
+{{itemized_services}}
+{{/if}}
+
 **Subtotal:** \${{subtotal}}
 **Chemicals:** \${{chemical_total}}
 **Total Due:** \${{total}}
+
+**Payment Terms:** {{payment_terms}}
+**Due Date:** {{due_date}}
 
 {{#if payment_link}}
 **Pay Online:** {{payment_link}}
 {{/if}}
 
-Payment is due within 15 days. Thank you for your business!
+Thank you for your business!
 
 Best regards,
 {{owner_name}}
@@ -250,6 +262,50 @@ Best regards,
   const saveEmailTemplates = (data) => saveData('pool-email-templates', data, setEmailTemplates);
   const saveEmailLog = (data) => saveData('pool-email-log', data, setEmailLog);
 
+  // Searchable Customer Select Component
+  const CustomerSelect = ({ value, onChange, placeholder = "Search or select customer...", className = "" }) => {
+    const [search, setSearch] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+    const selectedCustomer = customers.find(c => c.id === parseInt(value));
+    
+    const filteredCustomers = customers.filter(c => 
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.address.toLowerCase().includes(search.toLowerCase())
+    );
+    
+    return (
+      <div className={`relative ${className}`}>
+        <input
+          type="text"
+          value={isOpen ? search : (selectedCustomer?.name || '')}
+          onChange={e => { setSearch(e.target.value); setIsOpen(true); }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className="w-full px-4 py-2 border rounded-lg"
+        />
+        {isOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => { onChange(c.id.toString()); setSearch(''); setIsOpen(false); }}
+                  className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${parseInt(value) === c.id ? 'bg-blue-100' : ''}`}
+                >
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-xs text-gray-500">{c.address}</div>
+                </div>
+              )) : (
+                <div className="px-4 py-2 text-gray-500">No customers found</div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // Customer functions
   const addCustomer = () => {
     if (newCustomer.name && newCustomer.address) {
@@ -316,7 +372,7 @@ Best regards,
   const openCompleteServiceModal = (customer) => {
     setServiceToComplete(customer);
     setServiceChemicals([]);
-    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
     setShowCompleteServiceModal(true);
   };
 
@@ -353,7 +409,7 @@ Best regards,
     }));
     
     // Only include water test if any values were entered
-    const hasWaterTest = serviceWaterTest.chlorine || serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.cya || serviceWaterTest.hardness;
+    const hasWaterTest = serviceWaterTest.chlorine || serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.cya || serviceWaterTest.hardness || serviceWaterTest.phosphates;
     
     const service = {
       id: Date.now(),
@@ -393,7 +449,7 @@ Best regards,
     setShowCompleteServiceModal(false);
     setServiceToComplete(null);
     setServiceChemicals([]);
-    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' });
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
   };
 
   // Quick complete without chemicals (legacy support)
@@ -1189,6 +1245,25 @@ Best regards,
 
     setIsSendingEmail(true);
     try {
+      // Build itemized service list
+      let itemizedServices = '';
+      if (invoiceData.services && invoiceData.services.length > 0) {
+        itemizedServices = invoiceData.services.map(s => 
+          `• ${new Date(s.date).toLocaleDateString()} - $${s.totalAmount.toFixed(2)}`
+        ).join('\n');
+      }
+      
+      // Calculate due date based on payment terms
+      const termsDays = invoiceData.paymentTerms === 'due_receipt' ? 0 : 
+                        invoiceData.paymentTerms === 'net15' ? 15 :
+                        invoiceData.paymentTerms === 'net30' ? 30 : 15;
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + termsDays);
+      const dueDateStr = dueDate.toLocaleDateString();
+      const termsText = invoiceData.paymentTerms === 'due_receipt' ? 'Due Upon Receipt' :
+                        invoiceData.paymentTerms === 'net15' ? 'Net 15' :
+                        invoiceData.paymentTerms === 'net30' ? 'Net 30' : 'Net 15';
+
       const response = await fetch(`${PAYMENT_SERVER_URL}/send-invoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1199,9 +1274,12 @@ Best regards,
             customer_name: customer.name,
             month: invoiceData.month,
             service_summary: invoiceData.serviceSummary,
+            itemized_services: itemizedServices,
             subtotal: invoiceData.subtotal.toFixed(2),
             chemical_total: invoiceData.chemicalTotal.toFixed(2),
-            total: invoiceData.total.toFixed(2)
+            total: invoiceData.total.toFixed(2),
+            payment_terms: termsText,
+            due_date: dueDateStr
           },
           companySettings,
           paymentLink
@@ -1222,6 +1300,10 @@ Best regards,
           status: 'sent'
         };
         saveEmailLog([logEntry, ...emailLog]);
+        // Mark customer as billed for this month
+        if (invoiceData.billingMonth) {
+          setBilledCustomers(prev => ({ ...prev, [`${customer.id}-${invoiceData.billingMonth}`]: true }));
+        }
         showEmailNotification('success', `Invoice sent to ${customer.email}`);
         return true;
       } else {
@@ -1258,6 +1340,7 @@ Best regards,
         if (wt.alkalinity) results.push(`Alkalinity: ${wt.alkalinity}`);
         if (wt.cya) results.push(`CYA: ${wt.cya}`);
         if (wt.hardness) results.push(`Hardness: ${wt.hardness}`);
+        if (wt.phosphates) results.push(`Phosphates: ${wt.phosphates} ppb`);
         if (results.length > 0) {
           waterTestResults = results.join(' | ');
         }
@@ -1349,6 +1432,88 @@ Best regards,
         };
         saveEmailLog([logEntry, ...emailLog]);
         showEmailNotification('success', `Quote sent to ${customer.email}`);
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      showEmailNotification('error', `Failed to send email: ${error.message}`);
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const sendJobCompletionEmail = async (customer, jobData) => {
+    if (!customer.email) {
+      showEmailNotification('error', 'Customer has no email address');
+      return false;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      // Build itemized list
+      let itemsList = '';
+      if (jobData.additionalItems?.length > 0) {
+        itemsList = jobData.additionalItems.map(i => `• ${i.name} x${i.quantity} - $${i.totalCost.toFixed(2)}`).join('\n');
+      }
+      
+      const chemicalsUsed = jobData.chemicalsUsed?.length > 0
+        ? jobData.chemicalsUsed.map(c => `• ${c.name}: ${c.quantity} ${c.unit}`).join('\n')
+        : '';
+
+      const jobTemplate = {
+        subject: `Job Completed - ${jobData.jobType} - {{company_name}}`,
+        body: `Hi {{customer_name}},
+
+We've completed the following work at your property:
+
+**Job Type:** ${jobData.jobType}
+**Date:** {{service_date}}
+**Base Price:** $${jobData.basePrice.toFixed(2)}
+
+${itemsList ? `**Parts & Materials:**\n${itemsList}\n` : ''}
+${chemicalsUsed ? `**Chemicals Applied:**\n${chemicalsUsed}\n` : ''}
+**Total:** $${jobData.total.toFixed(2)}
+
+${jobData.notes ? `**Technician Notes:**\n${jobData.notes}\n` : ''}
+Thank you for your business!
+
+Best regards,
+{{owner_name}}
+{{company_name}}
+{{company_phone}}`
+      };
+
+      const response = await fetch(\`\${PAYMENT_SERVER_URL}/send-weekly-update\`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          template: jobTemplate,
+          data: {
+            customer_name: customer.name,
+            service_date: new Date().toLocaleDateString()
+          },
+          companySettings
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        const logEntry = {
+          id: Date.now(),
+          type: 'job-completion',
+          to: customer.email,
+          customerName: customer.name,
+          subject: `Job Completed - ${jobData.jobType}`,
+          sentDate: new Date().toISOString(),
+          status: 'sent'
+        };
+        saveEmailLog([logEntry, ...emailLog]);
+        showEmailNotification('success', `Job completion email sent to ${customer.email}`);
         return true;
       } else {
         throw new Error(result.error || 'Failed to send email');
@@ -1702,6 +1867,7 @@ Best regards,
     setJobToComplete(job);
     setJobCompletionItems([]);
     setJobChemicals([]);
+    setJobCompletionNotes('');
     setShowCompleteJobModal(true);
   };
 
@@ -1748,11 +1914,12 @@ Best regards,
   };
 
   // Complete job with additional items and chemicals
-  const completeJobWithItems = () => {
+  const completeJobWithItems = async () => {
     if (!jobToComplete) return;
     
     const additionalCost = jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
     const chemicalCost = jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0);
+    const totalAmount = jobToComplete.price + additionalCost + chemicalCost;
     
     const itemsUsed = jobCompletionItems.map(i => ({
       id: i.id,
@@ -1781,9 +1948,10 @@ Best regards,
       chemicalsUsed: chemicalsUsed,
       additionalItemsCost: additionalCost,
       additionalItems: itemsUsed,
-      totalAmount: jobToComplete.price + additionalCost + chemicalCost,
+      totalAmount: totalAmount,
       poolType: jobToComplete.jobType,
-      jobNotes: jobToComplete.notes
+      jobNotes: jobToComplete.notes,
+      techNotes: jobCompletionNotes
     };
     saveHistory([service, ...serviceHistory]);
     saveJobs(oneTimeJobs.filter(j => j.id !== jobToComplete.id));
@@ -1798,10 +1966,24 @@ Best regards,
     });
     saveChemicals(updatedChemicals);
     
+    // Send job completion email if enabled
+    const customer = customers.find(c => c.id === parseInt(jobToComplete.customerId));
+    if (sendJobEmailOnComplete && customer?.email) {
+      await sendJobCompletionEmail(customer, {
+        jobType: jobToComplete.jobType,
+        basePrice: jobToComplete.price,
+        additionalItems: itemsUsed,
+        chemicalsUsed: chemicalsUsed,
+        total: totalAmount,
+        notes: jobCompletionNotes
+      });
+    }
+    
     setShowCompleteJobModal(false);
     setJobToComplete(null);
     setJobCompletionItems([]);
     setJobChemicals([]);
+    setJobCompletionNotes('');
   };
 
   // Legacy completeJob - now opens modal
@@ -3493,19 +3675,57 @@ Best regards,
                     </div>
                   </div>
 
+                  {/* Technician Notes */}
+                  <div className="mb-4">
+                    <h4 className="font-bold text-gray-700 mb-2">📝 Technician Notes (sent to customer)</h4>
+                    <textarea
+                      value={jobCompletionNotes}
+                      onChange={e => setJobCompletionNotes(e.target.value)}
+                      placeholder="Any notes for the customer about the work performed, issues found, recommendations..."
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                      rows="3"
+                    />
+                  </div>
+
+                  {/* Send Email Checkbox */}
+                  {(() => {
+                    const customer = customers.find(c => c.id === parseInt(jobToComplete.customerId));
+                    return customer?.email ? (
+                      <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={sendJobEmailOnComplete}
+                            onChange={e => setSendJobEmailOnComplete(e.target.checked)}
+                            className="w-5 h-5 text-green-600 rounded"
+                          />
+                          <div>
+                            <span className="font-medium text-green-800">📧 Send job completion email</span>
+                            <div className="text-xs text-green-600">Will send to: {customer.email}</div>
+                          </div>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="mb-4 p-3 bg-amber-50 rounded-lg text-sm text-amber-700">
+                        ⚠️ No email on file for this customer. Add their email in the Customers tab to enable job completion emails.
+                      </div>
+                    );
+                  })()}
+
                   {/* Action Buttons */}
                   <div className="flex gap-3">
                     <button
-                      onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); }}
+                      onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); setJobCompletionNotes(''); }}
                       className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={completeJobWithItems}
-                      className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                      disabled={isSendingEmail}
+                      className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-green-400"
                     >
-                      ✓ Complete Job
+                      {isSendingEmail ? '⏳ Sending...' : '✓ Complete Job'}
                     </button>
                   </div>
                 </div>
@@ -3524,14 +3744,11 @@ Best regards,
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                      <select
+                      <CustomerSelect
                         value={newJob.customerId}
-                        onChange={e => setNewJob({ ...newJob, customerId: e.target.value })}
-                        className="w-full px-4 py-2 border rounded-lg"
-                      >
-                        <option value="">Select customer...</option>
-                        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                        onChange={val => setNewJob({ ...newJob, customerId: val })}
+                        placeholder="Search customer..."
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
@@ -3904,7 +4121,7 @@ Best regards,
             <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-green-700">✓ Complete Service</h3>
-                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' }); }} className="text-gray-500 hover:text-gray-700">
+                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' }); }} className="text-gray-500 hover:text-gray-700">
                   <Icons.X />
                 </button>
               </div>
@@ -3980,6 +4197,16 @@ Best regards,
                         placeholder="200-400"
                         value={serviceWaterTest.hardness}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, hardness: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Phosphates (ppb)</label>
+                      <input
+                        type="number"
+                        placeholder="0-500"
+                        value={serviceWaterTest.phosphates}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, phosphates: e.target.value })}
                         className="w-full px-2 py-1 border rounded text-center text-sm"
                       />
                     </div>
@@ -4128,7 +4355,7 @@ Best regards,
               {/* Complete Button */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', notes: '' }); }}
+                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' }); }}
                   className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
                 >
                   Cancel
@@ -4472,16 +4699,16 @@ Best regards,
             {/* Custom Invoice Section */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800">Service Call Invoice</h2>
+                <h2 className="text-xl font-bold text-gray-800">Custom / Ad-Hoc Invoice</h2>
                 <button
                   onClick={() => setShowCustomInvoice(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                 >
                   <Icons.Plus />
-                  Create Service Invoice
+                  Create Custom Invoice
                 </button>
               </div>
-              <p className="text-gray-600">Create itemized invoices for service calls with parts, labor, and descriptions.</p>
+              <p className="text-gray-600">Create one-off invoices for repairs, equipment, or special services not included in monthly billing.</p>
             </div>
 
             {/* Custom Invoice Modal */}
@@ -4498,14 +4725,11 @@ Best regards,
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                      <select
+                      <CustomerSelect
                         value={customInvoice.customerId}
-                        onChange={e => setCustomInvoice({ ...customInvoice, customerId: e.target.value })}
-                        className="w-full px-4 py-2 border rounded-lg"
-                      >
-                        <option value="">Select customer...</option>
-                        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                        onChange={val => setCustomInvoice({ ...customInvoice, customerId: val })}
+                        placeholder="Search customer..."
+                      />
                     </div>
 
                     {/* Add Line Item */}
@@ -4638,12 +4862,29 @@ Best regards,
             <div className="bg-white rounded-xl p-6 shadow-lg">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">Monthly Service Invoices</h2>
-                <input
-                  type="month"
-                  value={invoiceMonth}
-                  onChange={e => setInvoiceMonth(e.target.value)}
-                  className="px-4 py-2 border rounded-lg"
-                />
+                <div className="flex gap-3 items-center">
+                  <div>
+                    <label className="text-xs text-gray-500 block">Payment Terms</label>
+                    <select
+                      value={defaultPaymentTerms}
+                      onChange={e => setDefaultPaymentTerms(e.target.value)}
+                      className="px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="due_receipt">Due on Receipt</option>
+                      <option value="net15">Net 15</option>
+                      <option value="net30">Net 30</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block">Billing Month</label>
+                    <input
+                      type="month"
+                      value={invoiceMonth}
+                      onChange={e => setInvoiceMonth(e.target.value)}
+                      className="px-4 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
               </div>
 
               <table className="w-full">
@@ -4663,10 +4904,14 @@ Best regards,
                     const serviceTotal = services.reduce((sum, s) => sum + s.weeklyRate, 0);
                     const chemicalTotal = services.reduce((sum, s) => sum + (s.chemicalCost || 0), 0);
                     const total = services.reduce((sum, s) => sum + s.totalAmount, 0);
+                    const isBilled = billedCustomers[`${customer.id}-${invoiceMonth}`];
                     return (
-                      <tr key={customer.id} className="hover:bg-gray-50">
+                      <tr key={customer.id} className={isBilled ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-gray-50'}>
                         <td className="px-4 py-4">
-                          <div className="font-medium text-gray-800">{customer.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-gray-800">{customer.name}</div>
+                            {isBilled && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded">✓ Billed</span>}
+                          </div>
                           <div className="text-sm text-gray-500">{customer.address}</div>
                         </td>
                         <td className="px-4 py-4 text-gray-600">{services.length}</td>
@@ -4712,9 +4957,12 @@ Best regards,
                                 await sendInvoiceEmail(customer, {
                                   month: monthName,
                                   serviceSummary,
+                                  services: services,
                                   subtotal: serviceTotal,
                                   chemicalTotal,
-                                  total
+                                  total,
+                                  paymentTerms: defaultPaymentTerms,
+                                  billingMonth: invoiceMonth
                                 }, paymentLink);
                               }}
                               disabled={services.length === 0 || !customer.email || isSendingEmail}
@@ -5623,11 +5871,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.4.0
+        v1.6.0
       </div>
     </div>
   );
 }
+
 
 
 
