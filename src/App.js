@@ -1486,7 +1486,7 @@ Best regards,
 {{company_phone}}`
       };
 
-      const response = await fetch(\`\${PAYMENT_SERVER_URL}/send-weekly-update\`, {
+      const response = await fetch(`${PAYMENT_SERVER_URL}/send-weekly-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5876,6 +5876,7 @@ Best regards,
     </div>
   );
 }
+
 
 
 
