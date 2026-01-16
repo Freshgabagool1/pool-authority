@@ -45,6 +45,15 @@ const getLocalMonthString = (date = new Date()) => {
   return `${year}-${month}`;
 };
 
+// Get prior month for billing (services performed last month)
+const getPriorMonthString = () => {
+  const date = new Date();
+  date.setMonth(date.getMonth() - 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 export default function PoolAuthority() {
   // State
   const [customers, setCustomers] = useState([]);
@@ -63,7 +72,7 @@ export default function PoolAuthority() {
   const [routeDate, setRouteDate] = useState(getLocalDateString());
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [calendarDate, setCalendarDate] = useState(new Date());
-  const [invoiceMonth, setInvoiceMonth] = useState(getLocalMonthString());
+  const [invoiceMonth, setInvoiceMonth] = useState(getPriorMonthString());
   const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('net15');
   const [showCustomInvoice, setShowCustomInvoice] = useState(false);
   const [showCreateQuote, setShowCreateQuote] = useState(false);
@@ -99,6 +108,17 @@ export default function PoolAuthority() {
   const [billedCustomers, setBilledCustomers] = useState({}); // Track customers billed this month: { 'customerId-YYYY-MM': true }
   const [emailNotification, setEmailNotification] = useState(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  
+  // Payment tracking state
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [paymentToMark, setPaymentToMark] = useState(null); // { invoiceId, customerId, amount }
+  const [paymentMethod, setPaymentMethod] = useState({ method: 'electronic', checkNumber: '', source: '' });
+  const [paidInvoices, setPaidInvoices] = useState({}); // { 'customerId-YYYY-MM': { paid: true, method: 'check', checkNumber: '123', paidDate: '...' } }
+  
+  // Invoice terms modal state
+  const [showInvoiceTermsModal, setShowInvoiceTermsModal] = useState(false);
+  const [invoiceTermsAction, setInvoiceTermsAction] = useState(null); // { type: 'pdf' | 'email', customer, services, totals }
+  const [selectedInvoiceTerms, setSelectedInvoiceTerms] = useState('net15');
 
   // Company Settings & Email Templates
   const [companySettings, setCompanySettings] = useState({
@@ -200,6 +220,34 @@ Best regards,
 {{company_name}}
 {{company_phone}}
 {{company_email}}`
+    },
+    paymentReminder: {
+      subject: 'Friendly Reminder: Invoice for {{month}} - {{company_name}}',
+      body: `Hi {{customer_name}},
+
+We hope this message finds you well! This is a friendly reminder that your invoice for pool services in {{month}} is now past due.
+
+**Invoice Details:**
+{{service_summary}}
+
+**Amount Due:** \${{total}}
+**Days Past Due:** {{days_past_due}}
+
+We understand that things can slip through the cracks, so we wanted to reach out. If you've already sent payment, please disregard this reminder and thank you!
+
+{{#if payment_link}}
+**Pay Online:** {{payment_link}}
+{{/if}}
+
+If you have any questions about this invoice or would like to discuss payment options, please don't hesitate to reach out.
+
+Thank you for your continued business!
+
+Best regards,
+{{owner_name}}
+{{company_name}}
+{{company_phone}}
+{{company_email}}`
     }
   });
   
@@ -223,8 +271,8 @@ Best regards,
   useEffect(() => {
     const loadData = () => {
       try {
-        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log'];
-        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog];
+        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers'];
+        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers];
         for (let i = 0; i < keys.length; i++) {
           const result = localStorage.getItem(keys[i]);
           if (result) {
@@ -261,6 +309,8 @@ Best regards,
   const saveCompanySettings = (data) => saveData('pool-company-settings', data, setCompanySettings);
   const saveEmailTemplates = (data) => saveData('pool-email-templates', data, setEmailTemplates);
   const saveEmailLog = (data) => saveData('pool-email-log', data, setEmailLog);
+  const savePaidInvoices = (data) => saveData('pool-paid-invoices', data, setPaidInvoices);
+  const saveBilledCustomers = (data) => saveData('pool-billed-customers', data, setBilledCustomers);
 
   // Searchable Customer Select Component
   const CustomerSelect = ({ value, onChange, placeholder = "Search or select customer...", className = "" }) => {
@@ -1300,9 +1350,18 @@ Best regards,
           status: 'sent'
         };
         saveEmailLog([logEntry, ...emailLog]);
-        // Mark customer as billed for this month
+        // Mark customer as billed for this month (persisted with date and terms)
         if (invoiceData.billingMonth) {
-          setBilledCustomers(prev => ({ ...prev, [`${customer.id}-${invoiceData.billingMonth}`]: true }));
+          const newBilledCustomers = { 
+            ...billedCustomers, 
+            [`${customer.id}-${invoiceData.billingMonth}`]: {
+              billed: true,
+              billedDate: new Date().toISOString(),
+              terms: invoiceData.paymentTerms || 'net15',
+              amount: invoiceData.total
+            }
+          };
+          saveBilledCustomers(newBilledCustomers);
         }
         showEmailNotification('success', `Invoice sent to ${customer.email}`);
         return true;
@@ -1527,6 +1586,59 @@ Best regards,
     }
   };
 
+  const sendPaymentReminder = async (customer, reminderData, paymentLink = null) => {
+    if (!customer.email) {
+      showEmailNotification('error', 'Customer has no email address');
+      return false;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch(`${PAYMENT_SERVER_URL}/send-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          template: emailTemplates.paymentReminder,
+          data: {
+            customer_name: customer.name,
+            month: reminderData.month,
+            service_summary: reminderData.serviceSummary,
+            total: reminderData.total.toFixed(2),
+            days_past_due: reminderData.daysPastDue
+          },
+          companySettings,
+          paymentLink
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        const logEntry = {
+          id: Date.now(),
+          type: 'payment-reminder',
+          to: customer.email,
+          customerName: customer.name,
+          subject: `Payment Reminder for ${reminderData.month}`,
+          sentDate: new Date().toISOString(),
+          status: 'sent'
+        };
+        saveEmailLog([logEntry, ...emailLog]);
+        showEmailNotification('success', `Payment reminder sent to ${customer.email}`);
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      showEmailNotification('error', `Failed to send email: ${error.message}`);
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const updateQuoteStatus = (quoteId, status) => {
     saveQuotes(quotes.map(q => q.id === quoteId ? { ...q, status } : q));
   };
@@ -1643,11 +1755,18 @@ Best regards,
   };
 
   // Invoice generation
-  const downloadInvoice = (customer, yearMonth) => {
+  const downloadInvoice = (customer, yearMonth, paymentTerms = 'net15') => {
     const services = getMonthServices(customer.id, yearMonth);
     const total = services.reduce((sum, s) => sum + s.totalAmount, 0);
     const totalChemicals = services.reduce((sum, s) => sum + (s.chemicalCost || 0), 0);
     const monthName = new Date(yearMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    
+    // Calculate due date
+    const termsDays = paymentTerms === 'due_receipt' ? 0 : paymentTerms === 'net15' ? 15 : 30;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + termsDays);
+    const dueDateStr = dueDate.toLocaleDateString();
+    const termsText = paymentTerms === 'due_receipt' ? 'Due Upon Receipt' : paymentTerms === 'net15' ? 'Net 15' : 'Net 30';
     
     const html = `<!DOCTYPE html>
 <html><head><style>
@@ -1668,6 +1787,7 @@ Best regards,
   .total-box span { font-size: 14px; opacity: 0.9; }
   .total-box div { font-size: 32px; font-weight: bold; margin-top: 5px; }
   .summary-box { background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+  .terms-box { background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
 </style></head>
 <body>
   <div class="header">
@@ -1684,6 +1804,9 @@ Best regards,
     </div>
   </div>
   <h2 style="color:#1e3a5f;">Invoice - ${monthName}</h2>
+  <div class="terms-box">
+    <strong>Payment Terms:</strong> ${termsText} | <strong>Due Date:</strong> ${dueDateStr}
+  </div>
   <div class="info-grid">
     <div class="info-box">
       <h3>Bill To</h3>
@@ -2196,7 +2319,16 @@ Best regards,
                       <div className="flex items-center gap-3">
                         <div className="text-xl font-bold text-amber-600">${account.balance.toFixed(2)}</div>
                         <button
-                          onClick={() => markInvoicePaid(account.id, account.balance)}
+                          onClick={() => {
+                            setPaymentToMark({ 
+                              invoiceKey: `ar-${account.id}`, 
+                              customerId: account.id, 
+                              customerName: account.name, 
+                              amount: account.balance 
+                            });
+                            setPaymentMethod({ method: 'electronic', checkNumber: '', source: '' });
+                            setShowPaymentMethodModal(true);
+                          }}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
                         >
                           Mark Paid
@@ -4904,13 +5036,55 @@ Best regards,
                     const serviceTotal = services.reduce((sum, s) => sum + s.weeklyRate, 0);
                     const chemicalTotal = services.reduce((sum, s) => sum + (s.chemicalCost || 0), 0);
                     const total = services.reduce((sum, s) => sum + s.totalAmount, 0);
-                    const isBilled = billedCustomers[`${customer.id}-${invoiceMonth}`];
+                    const invoiceKey = `${customer.id}-${invoiceMonth}`;
+                    const isPaid = paidInvoices[invoiceKey]?.paid;
+                    const isBilled = billedCustomers[invoiceKey];
+                    const billedInfo = billedCustomers[invoiceKey];
+                    const paymentInfo = paidInvoices[invoiceKey];
+                    
+                    // Check if overdue (billed more than 30 days ago and not paid)
+                    let isOverdue = false;
+                    let daysPastDue = 0;
+                    if (isBilled && !isPaid && billedInfo?.billedDate) {
+                      const billedDate = new Date(billedInfo.billedDate);
+                      const termsDays = billedInfo.terms === 'due_receipt' ? 0 : billedInfo.terms === 'net15' ? 15 : 30;
+                      const dueDate = new Date(billedDate);
+                      dueDate.setDate(dueDate.getDate() + termsDays);
+                      const today = new Date();
+                      if (today > dueDate) {
+                        isOverdue = true;
+                        daysPastDue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+                      }
+                    }
+                    
+                    // Determine row color based on status
+                    let rowClass = 'hover:bg-gray-50';
+                    if (isPaid) {
+                      rowClass = 'bg-blue-50 hover:bg-blue-100';
+                    } else if (isOverdue) {
+                      rowClass = 'bg-red-50 hover:bg-red-100';
+                    } else if (isBilled) {
+                      rowClass = 'bg-green-50 hover:bg-green-100';
+                    }
+                    
                     return (
-                      <tr key={customer.id} className={isBilled ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-gray-50'}>
+                      <tr key={customer.id} className={rowClass}>
                         <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <div className="font-medium text-gray-800">{customer.name}</div>
-                            {isBilled && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded">✓ Billed</span>}
+                            {isPaid && (
+                              <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">
+                                ✓ Paid {paymentInfo?.method === 'check' ? `(Check #${paymentInfo.checkNumber})` : 
+                                        paymentInfo?.method === 'cash' ? '(Cash)' : 
+                                        paymentInfo?.method === 'electronic' ? `(${paymentInfo.source || 'Card'})` : ''}
+                              </span>
+                            )}
+                            {isOverdue && (
+                              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded">
+                                ⚠️ Overdue ({daysPastDue} days)
+                              </span>
+                            )}
+                            {!isPaid && !isOverdue && isBilled && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded">✓ Billed</span>}
                           </div>
                           <div className="text-sm text-gray-500">{customer.address}</div>
                         </td>
@@ -4925,60 +5099,53 @@ Best regards,
                               disabled={services.length === 0}
                               className="px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 text-xs"
                             >
-                              View/Edit
+                              View
                             </button>
                             <button
-                              onClick={() => downloadInvoice(customer, invoiceMonth)}
+                              onClick={() => {
+                                setInvoiceTermsAction({ type: 'pdf', customer, services, serviceTotal, chemicalTotal, total });
+                                setShowInvoiceTermsModal(true);
+                              }}
                               disabled={services.length === 0}
                               className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 text-xs"
                             >
                               PDF
                             </button>
                             <button
-                              onClick={async () => {
-                                const monthName = new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                                const serviceSummary = `${services.length} service${services.length !== 1 ? 's' : ''} @ $${customer.weeklyRate}/visit`;
-                                
-                                // Create Stripe payment link first
-                                let paymentLink = null;
-                                if (total > 0) {
-                                  const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
-                                  const stripeResult = await createStripeCheckout(
-                                    customer,
-                                    total,
-                                    `Pool Service - ${monthName}`,
-                                    invoiceNumber
-                                  );
-                                  if (stripeResult?.paymentUrl) {
-                                    paymentLink = stripeResult.paymentUrl;
-                                  }
-                                }
-                                
-                                await sendInvoiceEmail(customer, {
-                                  month: monthName,
-                                  serviceSummary,
-                                  services: services,
-                                  subtotal: serviceTotal,
-                                  chemicalTotal,
-                                  total,
-                                  paymentTerms: defaultPaymentTerms,
-                                  billingMonth: invoiceMonth
-                                }, paymentLink);
+                              onClick={() => {
+                                setInvoiceTermsAction({ type: 'email', customer, services, serviceTotal, chemicalTotal, total });
+                                setShowInvoiceTermsModal(true);
                               }}
                               disabled={services.length === 0 || !customer.email || isSendingEmail}
                               className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-xs"
                               title={!customer.email ? 'Customer has no email' : 'Send invoice with payment link'}
                             >
-                              {isSendingEmail ? '⏳' : '📧'} Email + Pay
+                              {isSendingEmail ? '⏳' : '📧'} Email
                             </button>
-                            <button
-                              onClick={() => openPaymentRequest(customer.id, total, `Monthly service - ${new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`)}
-                              disabled={services.length === 0 || total === 0}
-                              className="px-2 py-1 text-white rounded disabled:bg-gray-300 text-xs"
-                              style={{ backgroundColor: services.length > 0 && total > 0 ? '#635bff' : undefined }}
-                            >
-                              💳 Pay Only
-                            </button>
+                            {isOverdue && customer.email && (
+                              <button
+                                onClick={() => {
+                                  setInvoiceTermsAction({ type: 'reminder', customer, services, serviceTotal, chemicalTotal, total, daysPastDue });
+                                  setShowInvoiceTermsModal(true);
+                                }}
+                                disabled={isSendingEmail}
+                                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+                              >
+                                📧 Reminder
+                              </button>
+                            )}
+                            {!isPaid && services.length > 0 && total > 0 && (
+                              <button
+                                onClick={() => {
+                                  setPaymentToMark({ invoiceKey, customerId: customer.id, customerName: customer.name, amount: total });
+                                  setPaymentMethod({ method: 'electronic', checkNumber: '', source: '' });
+                                  setShowPaymentMethodModal(true);
+                                }}
+                                className="px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -5868,14 +6035,225 @@ Best regards,
           </div>
         )}
       </div>
+
+      {/* Invoice Terms Modal */}
+      {showInvoiceTermsModal && invoiceTermsAction && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">
+                {invoiceTermsAction.type === 'reminder' ? 'Send Payment Reminder' : 'Invoice Options'}
+              </h3>
+              <button onClick={() => setShowInvoiceTermsModal(false)} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+            
+            <div className={`mb-4 p-3 rounded-lg ${invoiceTermsAction.type === 'reminder' ? 'bg-red-50' : 'bg-gray-50'}`}>
+              <div className="font-medium">{invoiceTermsAction.customer.name}</div>
+              <div className="text-sm text-gray-500">{new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+              <div className="text-lg font-bold text-green-600 mt-1">${invoiceTermsAction.total.toFixed(2)}</div>
+              {invoiceTermsAction.type === 'reminder' && invoiceTermsAction.daysPastDue && (
+                <div className="text-sm text-red-600 mt-1">⚠️ {invoiceTermsAction.daysPastDue} days past due</div>
+              )}
+            </div>
+            
+            {invoiceTermsAction.type !== 'reminder' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+                <select
+                  value={selectedInvoiceTerms}
+                  onChange={e => setSelectedInvoiceTerms(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value="due_receipt">Due on Receipt</option>
+                  <option value="net15">Net 15</option>
+                  <option value="net30">Net 30</option>
+                </select>
+              </div>
+            )}
+
+            {invoiceTermsAction.type === 'reminder' && (
+              <div className="mb-4 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
+                <strong>Note:</strong> This will send a friendly payment reminder email with a new payment link attached.
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowInvoiceTermsModal(false)}
+                className="flex-1 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const { type, customer, services, serviceTotal, chemicalTotal, total, daysPastDue } = invoiceTermsAction;
+                  const monthName = new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                  
+                  if (type === 'pdf') {
+                    downloadInvoice(customer, invoiceMonth, selectedInvoiceTerms);
+                  } else if (type === 'email') {
+                    const serviceSummary = `${services.length} service${services.length !== 1 ? 's' : ''} @ $${customer.weeklyRate}/visit`;
+                    
+                    let paymentLink = null;
+                    if (total > 0) {
+                      const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+                      const stripeResult = await createStripeCheckout(customer, total, `Pool Service - ${monthName}`, invoiceNumber);
+                      if (stripeResult?.paymentUrl) {
+                        paymentLink = stripeResult.paymentUrl;
+                      }
+                    }
+                    
+                    await sendInvoiceEmail(customer, {
+                      month: monthName,
+                      serviceSummary,
+                      services,
+                      subtotal: serviceTotal,
+                      chemicalTotal,
+                      total,
+                      paymentTerms: selectedInvoiceTerms,
+                      billingMonth: invoiceMonth
+                    }, paymentLink);
+                  } else if (type === 'reminder') {
+                    const serviceSummary = `${services.length} service${services.length !== 1 ? 's' : ''} @ $${customer.weeklyRate}/visit`;
+                    
+                    // Create new payment link for reminder
+                    let paymentLink = null;
+                    if (total > 0) {
+                      const invoiceNumber = `REM-${Date.now().toString().slice(-8)}`;
+                      const stripeResult = await createStripeCheckout(customer, total, `Pool Service - ${monthName} (Overdue)`, invoiceNumber);
+                      if (stripeResult?.paymentUrl) {
+                        paymentLink = stripeResult.paymentUrl;
+                      }
+                    }
+                    
+                    await sendPaymentReminder(customer, {
+                      month: monthName,
+                      serviceSummary,
+                      total,
+                      daysPastDue
+                    }, paymentLink);
+                  }
+                  
+                  setShowInvoiceTermsModal(false);
+                }}
+                disabled={isSendingEmail}
+                className={`flex-1 py-2 text-white rounded-lg disabled:opacity-50 ${
+                  invoiceTermsAction.type === 'reminder' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {isSendingEmail ? '⏳ Sending...' : 
+                  invoiceTermsAction.type === 'pdf' ? '📄 Generate PDF' : 
+                  invoiceTermsAction.type === 'reminder' ? '📧 Send Reminder' : '📧 Send Invoice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Method Modal */}
+      {showPaymentMethodModal && paymentToMark && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Mark Payment Received</h3>
+              <button onClick={() => setShowPaymentMethodModal(false)} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+            
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <div className="font-medium">{paymentToMark.customerName}</div>
+              <div className="text-lg font-bold text-green-600">${paymentToMark.amount.toFixed(2)}</div>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['cash', 'check', 'electronic'].map(method => (
+                  <button
+                    key={method}
+                    onClick={() => setPaymentMethod({ ...paymentMethod, method })}
+                    className={`py-2 px-3 rounded-lg border-2 capitalize ${
+                      paymentMethod.method === method 
+                        ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {method === 'electronic' ? '💳 Card' : method === 'check' ? '📝 Check' : '💵 Cash'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {paymentMethod.method === 'check' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Check Number</label>
+                <input
+                  type="text"
+                  value={paymentMethod.checkNumber}
+                  onChange={e => setPaymentMethod({ ...paymentMethod, checkNumber: e.target.value })}
+                  placeholder="Enter check number"
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+              </div>
+            )}
+            
+            {paymentMethod.method === 'electronic' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Source</label>
+                <input
+                  type="text"
+                  value={paymentMethod.source}
+                  onChange={e => setPaymentMethod({ ...paymentMethod, source: e.target.value })}
+                  placeholder="e.g., Stripe, Venmo, Zelle, Credit Card"
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPaymentMethodModal(false)}
+                className="flex-1 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const newPaidInvoices = {
+                    ...paidInvoices,
+                    [paymentToMark.invoiceKey]: {
+                      paid: true,
+                      method: paymentMethod.method,
+                      checkNumber: paymentMethod.checkNumber,
+                      source: paymentMethod.source,
+                      paidDate: new Date().toISOString(),
+                      amount: paymentToMark.amount
+                    }
+                  };
+                  savePaidInvoices(newPaidInvoices);
+                  setShowPaymentMethodModal(false);
+                  showEmailNotification('success', `Payment marked as received from ${paymentToMark.customerName}`);
+                }}
+                className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                ✓ Confirm Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.6.0
+        v1.8.0
       </div>
     </div>
   );
 }
+
 
 
 
