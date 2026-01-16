@@ -54,6 +54,31 @@ const getPriorMonthString = () => {
   return `${year}-${month}`;
 };
 
+// Payment terms helper
+const getPaymentTermsDays = (terms) => {
+  switch(terms) {
+    case 'due_receipt': return 0;
+    case 'net7': return 7;
+    case 'net15': return 15;
+    case 'net30': return 30;
+    case 'net45': return 45;
+    case 'net60': return 60;
+    default: return 15;
+  }
+};
+
+const getPaymentTermsText = (terms) => {
+  switch(terms) {
+    case 'due_receipt': return 'Due Upon Receipt';
+    case 'net7': return 'Net 7';
+    case 'net15': return 'Net 15';
+    case 'net30': return 'Net 30';
+    case 'net45': return 'Net 45';
+    case 'net60': return 'Net 60';
+    default: return 'Net 15';
+  }
+};
+
 export default function PoolAuthority() {
   // State
   const [customers, setCustomers] = useState([]);
@@ -80,6 +105,8 @@ export default function PoolAuthority() {
   const [customInvoice, setCustomInvoice] = useState({ customerId: '', items: [], notes: '' });
   const [currentQuote, setCurrentQuote] = useState({ customerId: '', items: [], notes: '', validDays: 30 });
   const [newLineItem, setNewLineItem] = useState({ type: 'labor', description: '', modelNumber: '', quantity: 1, price: 0 });
+  const [savedQuoteItems, setSavedQuoteItems] = useState([]); // Saved items for reuse in quotes
+  const [showSavedItems, setShowSavedItems] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState({ customerId: '', amount: 0, description: '', invoiceId: '' });
   const [showCompleteServiceModal, setShowCompleteServiceModal] = useState(false);
@@ -271,8 +298,8 @@ Best regards,
   useEffect(() => {
     const loadData = () => {
       try {
-        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers'];
-        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers];
+        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers', 'pool-saved-quote-items'];
+        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers, setSavedQuoteItems];
         for (let i = 0; i < keys.length; i++) {
           const result = localStorage.getItem(keys[i]);
           if (result) {
@@ -311,6 +338,7 @@ Best regards,
   const saveEmailLog = (data) => saveData('pool-email-log', data, setEmailLog);
   const savePaidInvoices = (data) => saveData('pool-paid-invoices', data, setPaidInvoices);
   const saveBilledCustomers = (data) => saveData('pool-billed-customers', data, setBilledCustomers);
+  const saveSavedQuoteItems = (data) => saveData('pool-saved-quote-items', data, setSavedQuoteItems);
 
   // Searchable Customer Select Component
   const CustomerSelect = ({ value, onChange, placeholder = "Search or select customer...", className = "" }) => {
@@ -1513,7 +1541,7 @@ Best regards,
     }
   };
 
-  const sendJobCompletionEmail = async (customer, jobData) => {
+  const sendJobCompletionEmail = async (customer, jobData, paymentLink = null) => {
     if (!customer.email) {
       showEmailNotification('error', 'Customer has no email address');
       return false;
@@ -1531,20 +1559,26 @@ Best regards,
         ? jobData.chemicalsUsed.map(c => `• ${c.name}: ${c.quantity} ${c.unit}`).join('\n')
         : '';
 
+      const paymentSection = paymentLink 
+        ? `\n**Pay Online:** ${paymentLink}\n`
+        : '';
+
       const jobTemplate = {
-        subject: `Job Completed - ${jobData.jobType} - {{company_name}}`,
+        subject: `Service Invoice - ${jobData.jobType} - {{company_name}}`,
         body: `Hi {{customer_name}},
 
 We've completed the following work at your property:
 
 **Job Type:** ${jobData.jobType}
 **Date:** {{service_date}}
-**Base Price:** $${jobData.basePrice.toFixed(2)}
 
-${itemsList ? `**Parts & Materials:**\n${itemsList}\n` : ''}
-${chemicalsUsed ? `**Chemicals Applied:**\n${chemicalsUsed}\n` : ''}
-**Total:** $${jobData.total.toFixed(2)}
-
+**Invoice Details:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Labor/Service: $${jobData.basePrice.toFixed(2)}
+${itemsList ? `\n**Parts & Materials:**\n${itemsList}\n` : ''}${chemicalsUsed ? `\n**Chemicals Applied:**\n${chemicalsUsed}\n` : ''}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+**Total Due:** $${jobData.total.toFixed(2)}
+${paymentSection}
 ${jobData.notes ? `**Technician Notes:**\n${jobData.notes}\n` : ''}
 Thank you for your business!
 
@@ -1564,7 +1598,8 @@ Best regards,
             customer_name: customer.name,
             service_date: new Date().toLocaleDateString()
           },
-          companySettings
+          companySettings,
+          paymentLink
         })
       });
 
@@ -1573,15 +1608,15 @@ Best regards,
       if (result.success) {
         const logEntry = {
           id: Date.now(),
-          type: 'job-completion',
+          type: 'job-invoice',
           to: customer.email,
           customerName: customer.name,
-          subject: `Job Completed - ${jobData.jobType}`,
+          subject: `Service Invoice - ${jobData.jobType}`,
           sentDate: new Date().toISOString(),
           status: 'sent'
         };
         saveEmailLog([logEntry, ...emailLog]);
-        showEmailNotification('success', `Job completion email sent to ${customer.email}`);
+        showEmailNotification('success', `Job invoice email sent to ${customer.email}`);
         return true;
       } else {
         throw new Error(result.error || 'Failed to send email');
@@ -1870,6 +1905,122 @@ Best regards,
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `PoolAuthority-Invoice-${customer.name.replace(/\s+/g, '-')}-${yearMonth}.html`;
+    a.click();
+  };
+
+  // Generate PDF for job/service call invoice
+  const downloadJobInvoice = (service, paymentTerms = 'net15') => {
+    const customer = customers.find(c => c.id === service.customerId);
+    if (!customer) return;
+    
+    const invoiceNumber = `JOB-${service.id.toString().slice(-8)}`;
+    const serviceDate = new Date(service.date).toLocaleDateString();
+    
+    // Calculate due date
+    const termsDays = paymentTerms === 'due_receipt' ? 0 : 
+                      paymentTerms === 'net7' ? 7 :
+                      paymentTerms === 'net15' ? 15 : 
+                      paymentTerms === 'net30' ? 30 :
+                      paymentTerms === 'net45' ? 45 :
+                      paymentTerms === 'net60' ? 60 : 15;
+    const dueDate = new Date(service.date);
+    dueDate.setDate(dueDate.getDate() + termsDays);
+    const dueDateStr = dueDate.toLocaleDateString();
+    const termsText = paymentTerms === 'due_receipt' ? 'Due Upon Receipt' : 
+                      `Net ${termsDays}`;
+
+    const html = `<!DOCTYPE html>
+<html><head><style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #1e3a5f; }
+  .header { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; display: flex; align-items: center; gap: 20px; }
+  .header h1 { margin: 0 0 5px 0; font-size: 28px; }
+  .logo { width: 60px; height: 60px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+  .info-box h3 { margin: 0 0 10px 0; color: #1e3a5f; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .info-box p { margin: 5px 0; color: #4a5568; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th { background: #7c3aed; color: white; padding: 12px; text-align: left; }
+  td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
+  .total-box { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white; padding: 20px 30px; border-radius: 12px; text-align: right; }
+  .total-box span { font-size: 14px; opacity: 0.9; }
+  .total-box div { font-size: 32px; font-weight: bold; margin-top: 5px; }
+  .terms-box { background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+  .notes-box { background: #f0fdf4; padding: 15px; border-radius: 8px; margin-top: 20px; }
+</style></head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 100 110" class="logo">
+      <path d="M50 5 L90 25 L90 70 Q90 95 50 105 Q10 95 10 70 L10 25 Z" fill="#a855f7"/>
+      <path d="M50 12 L83 28 L83 68 Q83 88 50 98 Q17 88 17 68 L17 28 Z" fill="white" opacity="0.3"/>
+      <path d="M35 45 L45 55 L65 35" stroke="white" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>POOL AUTHORITY</h1>
+      <p style="margin:0;opacity:0.9;">Service Call Invoice</p>
+    </div>
+  </div>
+  <h2 style="color:#7c3aed;">Invoice #${invoiceNumber}</h2>
+  <div class="terms-box">
+    <strong>Payment Terms:</strong> ${termsText} | <strong>Due Date:</strong> ${dueDateStr}
+  </div>
+  <div class="info-grid">
+    <div class="info-box">
+      <h3>Bill To</h3>
+      <p><strong>${customer.name}</strong></p>
+      <p>${customer.address}</p>
+      ${customer.phone ? `<p>${customer.phone}</p>` : ''}
+      ${customer.email ? `<p>${customer.email}</p>` : ''}
+    </div>
+    <div class="info-box">
+      <h3>Service Details</h3>
+      <p><strong>Job Type:</strong> ${service.jobType || service.poolType}</p>
+      <p><strong>Service Date:</strong> ${serviceDate}</p>
+      <p><strong>Invoice Date:</strong> ${new Date().toLocaleDateString()}</p>
+    </div>
+  </div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th style="text-align:right;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>${service.jobType || service.poolType}</strong> - Labor</td>
+        <td style="text-align:right;">$${service.weeklyRate.toFixed(2)}</td>
+      </tr>
+      ${(service.additionalItems || []).map(item => `
+      <tr>
+        <td>${item.name} (x${item.quantity})</td>
+        <td style="text-align:right;">$${item.totalCost.toFixed(2)}</td>
+      </tr>`).join('')}
+      ${(service.chemicalsUsed || []).map(chem => `
+      <tr>
+        <td>${chem.name} (${chem.quantity} ${chem.unit})</td>
+        <td style="text-align:right;">$${chem.totalCost.toFixed(2)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  
+  <div class="total-box">
+    <span>Total Due</span>
+    <div>$${service.totalAmount.toFixed(2)}</div>
+  </div>
+  
+  ${service.techNotes ? `<div class="notes-box"><strong>Service Notes:</strong><br>${service.techNotes}</div>` : ''}
+  
+  <div style="margin-top: 40px; text-align: center; color: #718096; font-size: 14px;">
+    <p>Thank you for your business!</p>
+    <p>${companySettings.companyName || 'Pool Authority'} | ${companySettings.phone || ''} | ${companySettings.email || ''}</p>
+  </div>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `PoolAuthority-Job-${invoiceNumber}-${customer.name.replace(/\s+/g, '-')}.html`;
     a.click();
   };
 
@@ -3213,7 +3364,7 @@ Best regards,
             {/* Create Quote Modal */}
             {showCreateQuote && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="bg-white rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold">Create Quote</h3>
                     <button onClick={() => setShowCreateQuote(false)} className="text-gray-500 hover:text-gray-700">
@@ -3225,14 +3376,11 @@ Best regards,
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                        <select
+                        <CustomerSelect
                           value={currentQuote.customerId}
-                          onChange={e => setCurrentQuote({ ...currentQuote, customerId: e.target.value })}
-                          className="w-full px-4 py-2 border rounded-lg"
-                        >
-                          <option value="">Select customer...</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
+                          onChange={val => setCurrentQuote({ ...currentQuote, customerId: val })}
+                          placeholder="Search customer..."
+                        />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Valid For (Days)</label>
@@ -3245,57 +3393,140 @@ Best regards,
                       </div>
                     </div>
 
+                    {/* Saved Items Quick Add */}
+                    {savedQuoteItems.length > 0 && (
+                      <div className="bg-purple-50 p-4 rounded-lg">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="font-medium text-purple-800">📋 Saved Items (click to add to quote)</h4>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowSavedItems(!showSavedItems)}
+                              className="text-sm text-purple-600 hover:underline"
+                            >
+                              {showSavedItems ? 'Hide' : 'Show'} ({savedQuoteItems.length})
+                            </button>
+                          </div>
+                        </div>
+                        {showSavedItems && (
+                          <div className="space-y-2 mt-2">
+                            {savedQuoteItems.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between bg-white p-2 rounded-lg border border-purple-200">
+                                <button
+                                  onClick={() => {
+                                    setCurrentQuote({
+                                      ...currentQuote,
+                                      items: [...currentQuote.items, { ...item, id: Date.now() }]
+                                    });
+                                  }}
+                                  className="flex-1 text-left hover:text-purple-700"
+                                  title="Click to add to quote"
+                                >
+                                  <span className="text-xs bg-purple-100 px-2 py-0.5 rounded mr-2">{item.type}</span>
+                                  <span className="font-medium">{item.description}</span>
+                                  {item.modelNumber && <span className="text-xs text-gray-500 ml-2">#{item.modelNumber}</span>}
+                                  <span className="text-green-600 ml-2">${item.price}</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Remove "${item.description}" from saved items?`)) {
+                                      saveSavedQuoteItems(savedQuoteItems.filter((_, i) => i !== idx));
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1 ml-2"
+                                  title="Remove saved item"
+                                >
+                                  <Icons.X />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Add Line Item */}
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium mb-3">Add Line Item</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <select
-                          value={newLineItem.type}
-                          onChange={e => setNewLineItem({ ...newLineItem, type: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
-                        >
-                          <option value="labor">Labor</option>
-                          <option value="part">Part/Equipment</option>
-                          <option value="chemical">Chemical</option>
-                          <option value="other">Other</option>
-                        </select>
-                        <input
-                          type="text"
-                          placeholder="Description"
-                          value={newLineItem.description}
-                          onChange={e => setNewLineItem({ ...newLineItem, description: e.target.value })}
-                          className="px-3 py-2 border rounded-lg col-span-2"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Model/Part #"
-                          value={newLineItem.modelNumber}
-                          onChange={e => setNewLineItem({ ...newLineItem, modelNumber: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
-                        />
-                        <div className="flex gap-2">
+                      <h4 className="font-medium mb-3">Add New Line Item</h4>
+                      <div className="grid grid-cols-6 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Type</label>
+                          <select
+                            value={newLineItem.type}
+                            onChange={e => setNewLineItem({ ...newLineItem, type: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg"
+                          >
+                            <option value="labor">Labor</option>
+                            <option value="part">Part/Equipment</option>
+                            <option value="chemical">Chemical</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs text-gray-500 mb-1">Description</label>
+                          <input
+                            type="text"
+                            placeholder="e.g., Pool Pump Installation"
+                            value={newLineItem.description}
+                            onChange={e => setNewLineItem({ ...newLineItem, description: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Model/Part #</label>
+                          <input
+                            type="text"
+                            placeholder="e.g., SP2610X15"
+                            value={newLineItem.modelNumber}
+                            onChange={e => setNewLineItem({ ...newLineItem, modelNumber: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Qty</label>
                           <input
                             type="number"
-                            placeholder="Qty"
+                            min="1"
                             value={newLineItem.quantity}
                             onChange={e => setNewLineItem({ ...newLineItem, quantity: parseInt(e.target.value) || 1 })}
-                            className="px-3 py-2 border rounded-lg w-16"
+                            className="w-full px-3 py-2 border rounded-lg"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Price ($)</label>
                           <input
                             type="number"
-                            placeholder="Price"
+                            min="0"
+                            step="0.01"
                             value={newLineItem.price}
                             onChange={e => setNewLineItem({ ...newLineItem, price: parseFloat(e.target.value) || 0 })}
-                            className="px-3 py-2 border rounded-lg flex-1"
+                            className="w-full px-3 py-2 border rounded-lg"
                           />
                         </div>
                       </div>
-                      <button
-                        onClick={() => addLineItem(currentQuote, setCurrentQuote)}
-                        className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        Add Item
-                      </button>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => addLineItem(currentQuote, setCurrentQuote)}
+                          disabled={!newLineItem.description || newLineItem.price <= 0}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+                        >
+                          Add to Quote
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (newLineItem.description && newLineItem.price > 0) {
+                              const itemToSave = { ...newLineItem };
+                              if (!savedQuoteItems.find(i => i.description === itemToSave.description && i.modelNumber === itemToSave.modelNumber)) {
+                                saveSavedQuoteItems([...savedQuoteItems, itemToSave]);
+                                showEmailNotification('success', 'Item saved for future quotes');
+                              }
+                            }
+                          }}
+                          disabled={!newLineItem.description || newLineItem.price <= 0}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300"
+                        >
+                          💾 Save Item
+                        </button>
+                      </div>
                     </div>
 
                     {/* Line Items List */}
@@ -5014,8 +5245,11 @@ Best regards,
                       className="px-3 py-2 border rounded-lg text-sm"
                     >
                       <option value="due_receipt">Due on Receipt</option>
+                      <option value="net7">Net 7</option>
                       <option value="net15">Net 15</option>
                       <option value="net30">Net 30</option>
+                      <option value="net45">Net 45</option>
+                      <option value="net60">Net 60</option>
                     </select>
                   </div>
                   <div>
@@ -5505,90 +5739,131 @@ Best regards,
               </div>
             )}
 
-            {/* Recent Service Call / Job Invoices */}
+            {/* Completed Jobs / Service Calls - Table format matching monthly invoices */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-800">Completed Jobs / Service Calls</h3>
-                <input
-                  type="month"
-                  value={invoiceMonth}
-                  onChange={e => setInvoiceMonth(e.target.value)}
-                  className="px-3 py-1 border rounded-lg text-sm"
-                />
-              </div>
-              {getAllMonthJobServices(invoiceMonth).length > 0 ? (
-                <div className="space-y-3">
-                  {getAllMonthJobServices(invoiceMonth).map(s => {
-                    const customer = customers.find(c => c.id === s.customerId);
-                    return (
-                      <div key={s.id} className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                        <div>
-                          <div className="font-bold">{s.customerName}</div>
-                          <div className="text-sm text-gray-600 capitalize">{s.jobType || s.poolType}</div>
-                          <div className="text-xs text-gray-500">{new Date(s.date).toLocaleDateString()}</div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <div className="text-xl font-bold text-green-600">${s.totalAmount.toFixed(2)}</div>
-                            {(s.chemicalCost > 0 || s.additionalItemsCost > 0) && (
-                              <div className="text-xs text-gray-500">
-                                Labor: ${s.weeklyRate.toFixed(2)}
-                                {s.additionalItemsCost > 0 && ` + Parts: $${s.additionalItemsCost.toFixed(2)}`}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            {customer?.email && (
-                              <button
-                                onClick={async () => {
-                                  // Create payment link and send job invoice
-                                  let paymentLink = null;
-                                  if (s.totalAmount > 0) {
-                                    const invoiceNumber = `JOB-${s.id.toString().slice(-8)}`;
-                                    const stripeResult = await createStripeCheckout(customer, s.totalAmount, `${s.jobType || 'Service Call'} - ${customer.name}`, invoiceNumber);
-                                    if (stripeResult?.paymentUrl) {
-                                      paymentLink = stripeResult.paymentUrl;
-                                    }
-                                  }
-                                  await sendJobCompletionEmail(customer, {
-                                    jobType: s.jobType || s.poolType,
-                                    basePrice: s.weeklyRate,
-                                    additionalItems: s.additionalItems || [],
-                                    chemicalsUsed: s.chemicalsUsed || [],
-                                    total: s.totalAmount,
-                                    notes: s.techNotes || ''
-                                  });
-                                }}
-                                disabled={isSendingEmail}
-                                className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                              >
-                                📧 Email
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                setPaymentToMark({ 
-                                  invoiceKey: `job-${s.id}`, 
-                                  customerId: s.customerId, 
-                                  customerName: s.customerName, 
-                                  amount: s.totalAmount 
-                                });
-                                setPaymentMethod({ method: 'electronic', checkNumber: '', source: '' });
-                                setShowPaymentMethodModal(true);
-                              }}
-                              className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
-                            >
-                              Mark Paid
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <h3 className="text-xl font-bold text-gray-800">Completed Jobs / Service Calls</h3>
+                <div className="text-sm text-gray-500">
+                  Showing: {new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </div>
-              ) : (
-                <p className="text-gray-500 text-center py-8">No completed jobs for this month</p>
-              )}
+              </div>
+              
+              <table className="w-full">
+                <thead className="bg-purple-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Customer</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Job Type</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Date</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Labor</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Parts/Chem</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Total</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {getAllMonthJobServices(invoiceMonth).length > 0 ? (
+                    getAllMonthJobServices(invoiceMonth).map(s => {
+                      const customer = customers.find(c => c.id === s.customerId);
+                      const jobInvoiceKey = `job-${s.id}`;
+                      const isJobPaid = paidInvoices[jobInvoiceKey]?.paid;
+                      const jobPaymentInfo = paidInvoices[jobInvoiceKey];
+                      const isJobBilled = billedCustomers[jobInvoiceKey];
+                      
+                      let rowClass = 'hover:bg-gray-50';
+                      if (isJobPaid) {
+                        rowClass = 'bg-blue-50 hover:bg-blue-100';
+                      } else if (isJobBilled) {
+                        rowClass = 'bg-green-50 hover:bg-green-100';
+                      }
+                      
+                      return (
+                        <tr key={s.id} className={rowClass}>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="font-medium text-gray-800">{s.customerName}</div>
+                              {isJobPaid && (
+                                <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">
+                                  ✓ Paid {jobPaymentInfo?.method === 'check' ? `(#${jobPaymentInfo.checkNumber})` : 
+                                          jobPaymentInfo?.method === 'cash' ? '(Cash)' : 
+                                          `(${jobPaymentInfo?.source || 'Card'})`}
+                                </span>
+                              )}
+                              {!isJobPaid && isJobBilled && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded">✓ Billed</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-gray-600 capitalize">{s.jobType || s.poolType}</td>
+                          <td className="px-4 py-4 text-gray-600">{new Date(s.date).toLocaleDateString()}</td>
+                          <td className="px-4 py-4 text-gray-600">${s.weeklyRate.toFixed(2)}</td>
+                          <td className="px-4 py-4 text-teal-600">${((s.additionalItemsCost || 0) + (s.chemicalCost || 0)).toFixed(2)}</td>
+                          <td className="px-4 py-4 font-bold text-green-600">${s.totalAmount.toFixed(2)}</td>
+                          <td className="px-4 py-4 text-right">
+                            <div className="flex gap-1 justify-end flex-wrap">
+                              <button
+                                onClick={() => downloadJobInvoice(s, defaultPaymentTerms)}
+                                className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                              >
+                                PDF
+                              </button>
+                              {customer?.email && (
+                                <button
+                                  onClick={async () => {
+                                    let paymentLink = null;
+                                    if (s.totalAmount > 0) {
+                                      const invoiceNumber = `JOB-${s.id.toString().slice(-8)}`;
+                                      const stripeResult = await createStripeCheckout(customer, s.totalAmount, `${s.jobType || 'Service Call'} - ${customer.name}`, invoiceNumber);
+                                      if (stripeResult?.paymentUrl) {
+                                        paymentLink = stripeResult.paymentUrl;
+                                      }
+                                    }
+                                    await sendJobCompletionEmail(customer, {
+                                      jobType: s.jobType || s.poolType,
+                                      basePrice: s.weeklyRate,
+                                      additionalItems: s.additionalItems || [],
+                                      chemicalsUsed: s.chemicalsUsed || [],
+                                      total: s.totalAmount,
+                                      notes: s.techNotes || ''
+                                    }, paymentLink);
+                                    // Mark as billed
+                                    const newBilledCustomers = { ...billedCustomers, [jobInvoiceKey]: { billed: true, billedDate: new Date().toISOString() } };
+                                    saveBilledCustomers(newBilledCustomers);
+                                  }}
+                                  disabled={isSendingEmail}
+                                  className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                                >
+                                  {isSendingEmail ? '⏳' : '📧'} Email
+                                </button>
+                              )}
+                              {!isJobPaid && (
+                                <button
+                                  onClick={() => {
+                                    setPaymentToMark({ 
+                                      invoiceKey: jobInvoiceKey, 
+                                      customerId: s.customerId, 
+                                      customerName: s.customerName, 
+                                      amount: s.totalAmount 
+                                    });
+                                    setPaymentMethod({ method: 'electronic', checkNumber: '', source: '' });
+                                    setShowPaymentMethodModal(true);
+                                  }}
+                                  className="px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
+                                >
+                                  Mark Paid
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                        No completed jobs for this month
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -6168,8 +6443,11 @@ Best regards,
                   className="w-full px-4 py-2 border rounded-lg"
                 >
                   <option value="due_receipt">Due on Receipt</option>
+                  <option value="net7">Net 7</option>
                   <option value="net15">Net 15</option>
                   <option value="net30">Net 30</option>
+                  <option value="net45">Net 45</option>
+                  <option value="net60">Net 60</option>
                 </select>
               </div>
             )}
@@ -6349,11 +6627,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.9.0
+        v2.0.0
       </div>
     </div>
   );
 }
+
 
 
 
