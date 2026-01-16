@@ -4693,19 +4693,35 @@ Best regards,
                               onClick={async () => {
                                 const monthName = new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
                                 const serviceSummary = `${services.length} service${services.length !== 1 ? 's' : ''} @ $${customer.weeklyRate}/visit`;
+                                
+                                // Create Stripe payment link first
+                                let paymentLink = null;
+                                if (total > 0) {
+                                  const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+                                  const stripeResult = await createStripeCheckout(
+                                    customer,
+                                    total,
+                                    `Pool Service - ${monthName}`,
+                                    invoiceNumber
+                                  );
+                                  if (stripeResult?.paymentUrl) {
+                                    paymentLink = stripeResult.paymentUrl;
+                                  }
+                                }
+                                
                                 await sendInvoiceEmail(customer, {
                                   month: monthName,
                                   serviceSummary,
                                   subtotal: serviceTotal,
                                   chemicalTotal,
                                   total
-                                });
+                                }, paymentLink);
                               }}
                               disabled={services.length === 0 || !customer.email || isSendingEmail}
                               className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-xs"
-                              title={!customer.email ? 'Customer has no email' : 'Send invoice email'}
+                              title={!customer.email ? 'Customer has no email' : 'Send invoice with payment link'}
                             >
-                              📧 Email
+                              {isSendingEmail ? '⏳' : '📧'} Email + Pay
                             </button>
                             <button
                               onClick={() => openPaymentRequest(customer.id, total, `Monthly service - ${new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`)}
@@ -4713,7 +4729,7 @@ Best regards,
                               className="px-2 py-1 text-white rounded disabled:bg-gray-300 text-xs"
                               style={{ backgroundColor: services.length > 0 && total > 0 ? '#635bff' : undefined }}
                             >
-                              💳 Pay
+                              💳 Pay Only
                             </button>
                           </div>
                         </td>
@@ -5607,11 +5623,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.3.0
+        v1.4.0
       </div>
     </div>
   );
 }
+
 
 
 
