@@ -507,8 +507,17 @@ Best regards,
     openCompleteServiceModal(customer);
   };
 
+  // Get recurring services for a month (excludes one-time jobs)
   const getMonthServices = (custId, yearMonth) => 
-    serviceHistory.filter(s => s.customerId === custId && s.date.startsWith(yearMonth));
+    serviceHistory.filter(s => s.customerId === custId && s.date.startsWith(yearMonth) && !s.isJobService);
+
+  // Get job/service call completions for a month
+  const getMonthJobServices = (custId, yearMonth) => 
+    serviceHistory.filter(s => s.customerId === custId && s.date.startsWith(yearMonth) && s.isJobService);
+
+  // Get all job services for a month (across all customers)
+  const getAllMonthJobServices = (yearMonth) => 
+    serviceHistory.filter(s => s.date.startsWith(yearMonth) && s.isJobService);
 
   const getMonthTotal = (custId, yearMonth) => 
     getMonthServices(custId, yearMonth).reduce((sum, s) => sum + s.totalAmount, 0);
@@ -596,9 +605,9 @@ Best regards,
 
   // Helper to change route date
   const changeRouteDate = (days) => {
-    const current = new Date(routeDate);
+    const current = new Date(routeDate + 'T12:00:00'); // Add time to avoid timezone issues
     current.setDate(current.getDate() + days);
-    setRouteDate(current.toISOString().split('T')[0]);
+    setRouteDate(getLocalDateString(current));
   };
 
   const formatRouteDate = (dateStr) => {
@@ -606,10 +615,10 @@ Best regards,
     const today = getLocalDateString();
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = getLocalDateString(tomorrow);
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayStr = getLocalDateString(yesterday);
     
     if (dateStr === today) return 'Today';
     if (dateStr === tomorrowStr) return 'Tomorrow';
@@ -2074,7 +2083,9 @@ Best regards,
       totalAmount: totalAmount,
       poolType: jobToComplete.jobType,
       jobNotes: jobToComplete.notes,
-      techNotes: jobCompletionNotes
+      techNotes: jobCompletionNotes,
+      isJobService: true,  // Flag to distinguish from recurring services
+      jobType: jobToComplete.jobType
     };
     saveHistory([service, ...serviceHistory]);
     saveJobs(oneTimeJobs.filter(j => j.id !== jobToComplete.id));
@@ -5008,13 +5019,38 @@ Best regards,
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 block">Billing Month</label>
-                    <input
-                      type="month"
-                      value={invoiceMonth}
-                      onChange={e => setInvoiceMonth(e.target.value)}
-                      className="px-4 py-2 border rounded-lg"
-                    />
+                    <label className="text-xs text-gray-500 block">Year</label>
+                    <select
+                      value={invoiceMonth.split('-')[0]}
+                      onChange={e => setInvoiceMonth(`${e.target.value}-${invoiceMonth.split('-')[1]}`)}
+                      className="px-3 py-2 border rounded-lg text-sm"
+                    >
+                      {[...Array(5)].map((_, i) => {
+                        const year = new Date().getFullYear() - 2 + i;
+                        return <option key={year} value={year}>{year}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block">Month</label>
+                    <select
+                      value={invoiceMonth.split('-')[1]}
+                      onChange={e => setInvoiceMonth(`${invoiceMonth.split('-')[0]}-${e.target.value}`)}
+                      className="px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="01">January</option>
+                      <option value="02">February</option>
+                      <option value="03">March</option>
+                      <option value="04">April</option>
+                      <option value="05">May</option>
+                      <option value="06">June</option>
+                      <option value="07">July</option>
+                      <option value="08">August</option>
+                      <option value="09">September</option>
+                      <option value="10">October</option>
+                      <option value="11">November</option>
+                      <option value="12">December</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -5469,24 +5505,89 @@ Best regards,
               </div>
             )}
 
-            {/* Recent Service Invoices */}
+            {/* Recent Service Call / Job Invoices */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Recent Service Call Invoices</h3>
-              {serviceHistory.filter(s => s.type === 'custom-invoice').length > 0 ? (
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-gray-800">Completed Jobs / Service Calls</h3>
+                <input
+                  type="month"
+                  value={invoiceMonth}
+                  onChange={e => setInvoiceMonth(e.target.value)}
+                  className="px-3 py-1 border rounded-lg text-sm"
+                />
+              </div>
+              {getAllMonthJobServices(invoiceMonth).length > 0 ? (
                 <div className="space-y-3">
-                  {serviceHistory.filter(s => s.type === 'custom-invoice').slice(0, 10).map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div>
-                        <div className="font-bold">{s.customerName}</div>
-                        <div className="text-sm text-gray-500">{s.invoiceNumber} • {new Date(s.date).toLocaleDateString()}</div>
-                        <div className="text-xs text-gray-400">{s.invoiceItems?.length} items</div>
+                  {getAllMonthJobServices(invoiceMonth).map(s => {
+                    const customer = customers.find(c => c.id === s.customerId);
+                    return (
+                      <div key={s.id} className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                        <div>
+                          <div className="font-bold">{s.customerName}</div>
+                          <div className="text-sm text-gray-600 capitalize">{s.jobType || s.poolType}</div>
+                          <div className="text-xs text-gray-500">{new Date(s.date).toLocaleDateString()}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="text-xl font-bold text-green-600">${s.totalAmount.toFixed(2)}</div>
+                            {(s.chemicalCost > 0 || s.additionalItemsCost > 0) && (
+                              <div className="text-xs text-gray-500">
+                                Labor: ${s.weeklyRate.toFixed(2)}
+                                {s.additionalItemsCost > 0 && ` + Parts: $${s.additionalItemsCost.toFixed(2)}`}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {customer?.email && (
+                              <button
+                                onClick={async () => {
+                                  // Create payment link and send job invoice
+                                  let paymentLink = null;
+                                  if (s.totalAmount > 0) {
+                                    const invoiceNumber = `JOB-${s.id.toString().slice(-8)}`;
+                                    const stripeResult = await createStripeCheckout(customer, s.totalAmount, `${s.jobType || 'Service Call'} - ${customer.name}`, invoiceNumber);
+                                    if (stripeResult?.paymentUrl) {
+                                      paymentLink = stripeResult.paymentUrl;
+                                    }
+                                  }
+                                  await sendJobCompletionEmail(customer, {
+                                    jobType: s.jobType || s.poolType,
+                                    basePrice: s.weeklyRate,
+                                    additionalItems: s.additionalItems || [],
+                                    chemicalsUsed: s.chemicalsUsed || [],
+                                    total: s.totalAmount,
+                                    notes: s.techNotes || ''
+                                  });
+                                }}
+                                disabled={isSendingEmail}
+                                className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                              >
+                                📧 Email
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setPaymentToMark({ 
+                                  invoiceKey: `job-${s.id}`, 
+                                  customerId: s.customerId, 
+                                  customerName: s.customerName, 
+                                  amount: s.totalAmount 
+                                });
+                                setPaymentMethod({ method: 'electronic', checkNumber: '', source: '' });
+                                setShowPaymentMethodModal(true);
+                              }}
+                              className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
+                            >
+                              Mark Paid
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xl font-bold text-green-600">${s.totalAmount.toFixed(2)}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">No service call invoices yet</p>
+                <p className="text-gray-500 text-center py-8">No completed jobs for this month</p>
               )}
             </div>
           </div>
@@ -6248,11 +6349,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v1.8.0
+        v1.9.0
       </div>
     </div>
   );
 }
+
 
 
 
