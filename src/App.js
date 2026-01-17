@@ -2766,7 +2766,10 @@ Best regards,
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-800">{formatRouteDate(routeDate)}</div>
                   <div className="text-sm text-gray-500">
-                    {new Date(routeDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    {(() => {
+                      const [y, m, d] = routeDate.split('-').map(Number);
+                      return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                    })()}
                   </div>
                   <input
                     type="date"
@@ -2907,9 +2910,16 @@ Best regards,
                         <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
                         <button
                           onClick={() => {
-                            if (customer.isOneTimeJob && customer.jobData) {
-                              // Open job completion modal for one-time jobs
-                              openCompleteJobModal(customer.jobData);
+                            if (customer.isOneTimeJob) {
+                              // Find the job from oneTimeJobs and open job completion modal
+                              const job = oneTimeJobs.find(j => j.id === customer.jobId) || 
+                                          oneTimeJobs.find(j => j.customerId === customer.id.toString() && j.date === routeDate);
+                              if (job) {
+                                openCompleteJobModal(job);
+                              } else {
+                                console.log('Job not found', customer);
+                                alert('Job not found - it may have already been completed');
+                              }
                             } else {
                               // Open service completion modal for recurring services
                               completeService(customer);
@@ -6645,11 +6655,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.1
+        v2.0.2
       </div>
     </div>
   );
 }
+
 
 
 
