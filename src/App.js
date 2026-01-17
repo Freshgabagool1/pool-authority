@@ -2911,14 +2911,36 @@ Best regards,
                         <button
                           onClick={() => {
                             if (customer.isOneTimeJob) {
-                              // Find the job from oneTimeJobs and open job completion modal
-                              const job = oneTimeJobs.find(j => j.id === customer.jobId) || 
-                                          oneTimeJobs.find(j => j.customerId === customer.id.toString() && j.date === routeDate);
+                              // Use jobData if available, otherwise find the job
+                              let job = customer.jobData;
+                              
+                              if (!job) {
+                                // Find the job from oneTimeJobs - try multiple match methods
+                                job = oneTimeJobs.find(j => j.id === customer.jobId);
+                                
+                                if (!job) {
+                                  job = oneTimeJobs.find(j => {
+                                    const custIdMatch = String(j.customerId) === String(customer.id) || 
+                                                        parseInt(j.customerId) === customer.id ||
+                                                        j.customerId === customer.id;
+                                    const dateMatch = j.date === routeDate;
+                                    return custIdMatch && dateMatch;
+                                  });
+                                }
+                              }
+                              
                               if (job) {
                                 openCompleteJobModal(job);
                               } else {
-                                console.log('Job not found', customer);
-                                alert('Job not found - it may have already been completed');
+                                // Last resort - check all jobs and show what's available
+                                const allJobsForCustomer = oneTimeJobs.filter(j => 
+                                  String(j.customerId) === String(customer.id) || 
+                                  parseInt(j.customerId) === customer.id
+                                );
+                                console.log('Available jobs for customer:', allJobsForCustomer);
+                                console.log('Looking for date:', routeDate);
+                                console.log('Customer:', customer);
+                                alert(`Job not found. Customer ID: ${customer.id}, Date: ${routeDate}. Found ${allJobsForCustomer.length} other jobs for this customer. Try refreshing the page.`);
                               }
                             } else {
                               // Open service completion modal for recurring services
@@ -6655,11 +6677,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.2
+        v2.0.3
       </div>
     </div>
   );
 }
+
 
 
 
