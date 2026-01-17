@@ -104,6 +104,7 @@ export default function PoolAuthority() {
   const [quotes, setQuotes] = useState([]);
   const [customInvoice, setCustomInvoice] = useState({ customerId: '', items: [], notes: '' });
   const [currentQuote, setCurrentQuote] = useState({ customerId: '', items: [], notes: '', validDays: 30 });
+  const [editingQuoteId, setEditingQuoteId] = useState(null); // Track if editing existing quote
   const [newLineItem, setNewLineItem] = useState({ type: 'labor', description: '', modelNumber: '', quantity: 1, price: 0 });
   const [savedQuoteItems, setSavedQuoteItems] = useState([]); // Saved items for reuse in quotes
   const [showSavedItems, setShowSavedItems] = useState(false);
@@ -1025,9 +1026,38 @@ Best regards,
     if (!customer || currentQuote.items.length === 0) return;
 
     const total = currentQuote.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-    const quoteNumber = `QT-${Date.now().toString().slice(-8)}`;
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + currentQuote.validDays);
+
+    if (editingQuoteId) {
+      // Update existing quote
+      const updatedQuotes = quotes.map(q => {
+        if (q.id === editingQuoteId) {
+          return {
+            ...q,
+            customerId: customer.id,
+            customerName: customer.name,
+            customerEmail: customer.email,
+            items: currentQuote.items,
+            notes: currentQuote.notes,
+            total,
+            validUntil: validUntil.toISOString(),
+            validDays: currentQuote.validDays,
+            updatedDate: new Date().toISOString()
+          };
+        }
+        return q;
+      });
+      saveQuotes(updatedQuotes);
+      setEditingQuoteId(null);
+      setCurrentQuote({ customerId: '', items: [], notes: '', validDays: 30 });
+      setShowCreateQuote(false);
+      showEmailNotification('success', 'Quote updated successfully');
+      return;
+    }
+
+    // Create new quote
+    const quoteNumber = `QT-${Date.now().toString().slice(-8)}`;
 
     const quote = {
       id: Date.now(),
@@ -1038,8 +1068,10 @@ Best regards,
       items: currentQuote.items,
       notes: currentQuote.notes,
       total,
+      validDays: currentQuote.validDays,
       validUntil: validUntil.toISOString(),
       status: 'pending',
+      date: new Date().toISOString(),
       createdDate: new Date().toISOString()
     };
     saveQuotes([quote, ...quotes]);
@@ -1496,7 +1528,97 @@ Best regards,
     }
   };
 
-  const sendQuoteEmail = async (customer, quote) => {
+  // Download Quote as PDF/HTML
+  const downloadQuotePdf = (quote) => {
+    const customer = customers.find(c => c.id === quote.customerId);
+    const validUntil = new Date(quote.validUntil).toLocaleDateString();
+    
+    const html = `<!DOCTYPE html>
+<html><head><style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #1e3a5f; }
+  .header { background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; display: flex; align-items: center; gap: 20px; }
+  .header h1 { margin: 0 0 5px 0; font-size: 28px; }
+  .logo { width: 60px; height: 60px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+  .info-box h3 { margin: 0 0 10px 0; color: #1e3a5f; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .info-box p { margin: 5px 0; color: #4a5568; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th { background: #7c3aed; color: white; padding: 12px; text-align: left; }
+  td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
+  .total-box { background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%); color: white; padding: 20px 30px; border-radius: 12px; text-align: right; }
+  .total-box span { font-size: 14px; opacity: 0.9; }
+  .total-box div { font-size: 32px; font-weight: bold; margin-top: 5px; }
+  .validity { background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+</style></head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 100 110" class="logo">
+      <path d="M50 5 L90 25 L90 70 Q90 95 50 105 Q10 95 10 70 L10 25 Z" fill="#a855f7"/>
+      <path d="M50 12 L83 28 L83 68 Q83 88 50 98 Q17 88 17 68 L17 28 Z" fill="white" opacity="0.3"/>
+      <path d="M20 35 Q35 40 50 35 Q65 30 80 35" stroke="white" stroke-width="2" fill="none" opacity="0.8"/>
+      <path d="M20 48 Q35 53 50 48 Q65 43 80 48" stroke="white" stroke-width="2" fill="none" opacity="0.8"/>
+      <path d="M20 61 Q35 66 50 61 Q65 56 80 61" stroke="white" stroke-width="2" fill="none" opacity="0.8"/>
+    </svg>
+    <div>
+      <h1>POOL AUTHORITY</h1>
+      <p style="margin:0;opacity:0.9;">Quote</p>
+    </div>
+  </div>
+  <h2 style="color:#7c3aed;">${quote.quoteNumber}</h2>
+  <div class="validity">⏰ This quote is valid until <strong>${validUntil}</strong></div>
+  <div class="info-grid">
+    <div class="info-box">
+      <h3>Quote For</h3>
+      <p><strong>${customer?.name || quote.customerName}</strong></p>
+      <p>${customer?.address || ''}</p>
+      ${customer?.phone ? `<p>${customer.phone}</p>` : ''}
+      ${customer?.email ? `<p>${customer.email}</p>` : ''}
+    </div>
+    <div class="info-box">
+      <h3>Quote Details</h3>
+      <p><strong>Quote #:</strong> ${quote.quoteNumber}</p>
+      <p><strong>Date:</strong> ${new Date(quote.date).toLocaleDateString()}</p>
+      <p><strong>Valid Until:</strong> ${validUntil}</p>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Type</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${quote.items.map(item => `
+        <tr>
+          <td>${item.description}${item.modelNumber ? `<br><small style="color:#666;">Part #: ${item.modelNumber}</small>` : ''}</td>
+          <td><span style="background:#f3e8ff;padding:2px 8px;border-radius:4px;font-size:12px;">${item.type}</span></td>
+          <td>${item.quantity}</td>
+          <td>$${item.price.toFixed(2)}</td>
+          <td><strong>$${(item.quantity * item.price).toFixed(2)}</strong></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+  <div class="total-box">
+    <span>Quote Total</span>
+    <div>$${quote.total.toFixed(2)}</div>
+  </div>
+  ${quote.notes ? `<div style="margin-top:20px;padding:15px;background:#f8fafc;border-radius:8px;"><strong>Notes:</strong><br>${quote.notes}</div>` : ''}
+  <p style="text-align:center;margin-top:30px;color:#666;">To accept this quote, please contact us. Thank you for choosing Pool Authority!</p>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `PoolAuthority-Quote-${quote.quoteNumber}.html`;
+    a.click();
+  };
+
+  const sendQuoteEmail = async (quote, customer) => {
     if (!customer.email) {
       showEmailNotification('error', 'Customer has no email address');
       return false;
@@ -1504,7 +1626,7 @@ Best regards,
 
     setIsSendingEmail(true);
     try {
-      const lineItems = quote.items.map(i => `• ${i.description} - $${i.amount.toFixed(2)}`).join('\n');
+      const lineItems = quote.items.map(i => `• ${i.description}${i.modelNumber ? ` (${i.modelNumber})` : ''} x${i.quantity} - $${(i.quantity * i.price).toFixed(2)}`).join('\n');
 
       const response = await fetch(`${PAYMENT_SERVER_URL}/send-quote`, {
         method: 'POST',
@@ -1516,7 +1638,7 @@ Best regards,
             customer_name: customer.name,
             quote_number: quote.quoteNumber,
             quote_date: new Date(quote.date).toLocaleDateString(),
-            valid_days: '30',
+            valid_days: quote.validDays || '30',
             line_items: lineItems,
             total: quote.total.toFixed(2)
           },
@@ -2885,7 +3007,7 @@ Best regards,
                 {routeCustomers.length > 0 ? (
                   <div className="space-y-2">
                     {routeCustomers.map((customer, idx) => (
-                      <div key={customer.id} className={`flex items-center gap-3 p-3 rounded-lg ${customer.recurringId ? 'bg-blue-50' : customer.isOneTimeJob ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                      <div key={`${customer.id}-${customer.isOneTimeJob ? 'job' : 'recurring'}-${idx}`} className={`flex items-center gap-3 p-3 rounded-lg ${customer.recurringId ? 'bg-blue-50' : customer.isOneTimeJob ? 'bg-purple-50' : 'bg-gray-50'}`}>
                         <div className="flex flex-col gap-1">
                           <button onClick={() => moveInRoute(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▲</button>
                           <button onClick={() => moveInRoute(idx, 1)} disabled={idx === routeCustomers.length - 1} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▼</button>
@@ -2908,16 +3030,17 @@ Best regards,
                           {customer.dogName && <span className="text-xs text-amber-600">🐕 {customer.dogName}</span>}
                         </div>
                         <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
-                        <button
-                          onClick={() => {
-                            console.log('Complete button clicked', customer);
-                            if (customer.isOneTimeJob) {
-                              // For one-time jobs, open the job completion modal
-                              // First try jobData (passed from schedule), then look up from oneTimeJobs
+                        {customer.isOneTimeJob ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('JOB Complete clicked', customer);
                               const job = customer.jobData || 
                                           oneTimeJobs.find(j => j.id === customer.jobId) ||
                                           oneTimeJobs.find(j => String(j.customerId) === String(customer.id) && j.date === routeDate);
-                              
+                              console.log('Found job:', job);
                               if (job) {
                                 setJobToComplete(job);
                                 setJobCompletionItems([]);
@@ -2925,22 +3048,32 @@ Best regards,
                                 setJobCompletionNotes('');
                                 setShowCompleteJobModal(true);
                               } else {
-                                alert('Could not find job. Jobs in system: ' + oneTimeJobs.length);
+                                alert('Job not found. oneTimeJobs count: ' + oneTimeJobs.length);
                               }
-                            } else {
-                              // Open service completion modal for recurring services
+                            }}
+                            className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+                          >
+                            Complete Job
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('SERVICE Complete clicked', customer);
                               completeService(customer);
-                            }
-                          }}
-                          className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
-                        >
-                          Complete
-                        </button>
+                            }}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                          >
+                            Complete
+                          </button>
+                        )}
                         {!customer.recurringId && !customer.isOneTimeJob && (
                           <button onClick={() => toggleRouteCustomer(customer)} className="text-red-500 hover:text-red-700">
                             <Icons.X />
                           </button>
-                        )}
+                        )}}
                       </div>
                     ))}
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
@@ -3401,8 +3534,12 @@ Best regards,
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Create Quote</h3>
-                    <button onClick={() => setShowCreateQuote(false)} className="text-gray-500 hover:text-gray-700">
+                    <h3 className="text-xl font-bold">{editingQuoteId ? 'Edit Quote' : 'Create Quote'}</h3>
+                    <button onClick={() => { 
+                      setShowCreateQuote(false); 
+                      setEditingQuoteId(null);
+                      setCurrentQuote({ customerId: '', items: [], notes: '', validDays: 30 });
+                    }} className="text-gray-500 hover:text-gray-700">
                       <Icons.X />
                     </button>
                   </div>
@@ -3625,7 +3762,7 @@ Best regards,
                       disabled={!currentQuote.customerId || currentQuote.items.length === 0}
                       className="w-full py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-300"
                     >
-                      Generate & Send Quote
+                      {editingQuoteId ? '💾 Update Quote' : '📄 Generate Quote'}
                     </button>
                   </div>
                 </div>
@@ -3639,41 +3776,85 @@ Best regards,
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Pending Quotes</h3>
                 {quotes.filter(q => q.status === 'pending').length > 0 ? (
                   <div className="space-y-3">
-                    {quotes.filter(q => q.status === 'pending').map(quote => (
-                      <div key={quote.id} className="p-4 bg-amber-50 rounded-lg border-l-4 border-amber-500">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-bold">{quote.customerName}</div>
-                            <div className="text-sm text-gray-500">{quote.quoteNumber}</div>
-                            <div className="text-xs text-gray-400">
-                              Valid until: {new Date(quote.validUntil).toLocaleDateString()}
+                    {quotes.filter(q => q.status === 'pending').map(quote => {
+                      const customer = customers.find(c => c.id === quote.customerId);
+                      return (
+                        <div key={quote.id} className="p-4 bg-amber-50 rounded-lg border-l-4 border-amber-500">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-bold">{quote.customerName}</div>
+                              <div className="text-sm text-gray-500">{quote.quoteNumber}</div>
+                              <div className="text-xs text-gray-400">
+                                Valid until: {new Date(quote.validUntil).toLocaleDateString()}
+                              </div>
                             </div>
+                            <div className="text-xl font-bold text-amber-600">${quote.total.toFixed(2)}</div>
                           </div>
-                          <div className="text-xl font-bold text-amber-600">${quote.total.toFixed(2)}</div>
+                          {/* Action buttons row 1 - PDF, Email, Edit */}
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              onClick={() => downloadQuotePdf(quote)}
+                              className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                            >
+                              📄 PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (customer?.email) {
+                                  sendQuoteEmail(quote, customer);
+                                } else {
+                                  alert('Customer has no email address');
+                                }
+                              }}
+                              disabled={!customer?.email || isSendingEmail}
+                              className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:bg-gray-300"
+                            >
+                              {isSendingEmail ? '⏳' : '📧'} Email
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCurrentQuote({
+                                  ...quote,
+                                  customerId: quote.customerId,
+                                  validDays: Math.ceil((new Date(quote.validUntil) - new Date()) / (1000 * 60 * 60 * 24))
+                                });
+                                setEditingQuoteId(quote.id);
+                                setShowCreateQuote(true);
+                              }}
+                              className="flex-1 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
+                            >
+                              ✏️ Edit
+                            </button>
+                          </div>
+                          {/* Action buttons row 2 - Approve/Decline */}
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => convertQuoteToJob(quote)}
+                              className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                            >
+                              ✓ Approve → Job
+                            </button>
+                            <button
+                              onClick={() => convertQuoteToInvoice(quote)}
+                              className="flex-1 py-2 text-white rounded-lg hover:opacity-90 text-sm"
+                              style={{ backgroundColor: '#1e3a5f' }}
+                            >
+                              ✓ Approve → Invoice
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this quote?')) {
+                                  saveQuotes(quotes.filter(q => q.id !== quote.id));
+                                }
+                              }}
+                              className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={() => convertQuoteToJob(quote)}
-                            className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                          >
-                            Approve → Job
-                          </button>
-                          <button
-                            onClick={() => convertQuoteToInvoice(quote)}
-                            className="flex-1 py-2 text-white rounded-lg hover:opacity-90 text-sm"
-                            style={{ backgroundColor: '#1e3a5f' }}
-                          >
-                            Approve → Invoice
-                          </button>
-                          <button
-                            onClick={() => updateQuoteStatus(quote.id, 'declined')}
-                            className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-gray-500 text-center py-8">No pending quotes</p>
@@ -6680,11 +6861,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.4
+        v2.0.5
       </div>
     </div>
   );
 }
+
 
 
 
