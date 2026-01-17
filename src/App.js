@@ -2910,37 +2910,22 @@ Best regards,
                         <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
                         <button
                           onClick={() => {
+                            console.log('Complete button clicked', customer);
                             if (customer.isOneTimeJob) {
-                              // Use jobData if available, otherwise find the job
-                              let job = customer.jobData;
-                              
-                              if (!job) {
-                                // Find the job from oneTimeJobs - try multiple match methods
-                                job = oneTimeJobs.find(j => j.id === customer.jobId);
-                                
-                                if (!job) {
-                                  job = oneTimeJobs.find(j => {
-                                    const custIdMatch = String(j.customerId) === String(customer.id) || 
-                                                        parseInt(j.customerId) === customer.id ||
-                                                        j.customerId === customer.id;
-                                    const dateMatch = j.date === routeDate;
-                                    return custIdMatch && dateMatch;
-                                  });
-                                }
-                              }
+                              // For one-time jobs, open the job completion modal
+                              // First try jobData (passed from schedule), then look up from oneTimeJobs
+                              const job = customer.jobData || 
+                                          oneTimeJobs.find(j => j.id === customer.jobId) ||
+                                          oneTimeJobs.find(j => String(j.customerId) === String(customer.id) && j.date === routeDate);
                               
                               if (job) {
-                                openCompleteJobModal(job);
+                                setJobToComplete(job);
+                                setJobCompletionItems([]);
+                                setJobChemicals([]);
+                                setJobCompletionNotes('');
+                                setShowCompleteJobModal(true);
                               } else {
-                                // Last resort - check all jobs and show what's available
-                                const allJobsForCustomer = oneTimeJobs.filter(j => 
-                                  String(j.customerId) === String(customer.id) || 
-                                  parseInt(j.customerId) === customer.id
-                                );
-                                console.log('Available jobs for customer:', allJobsForCustomer);
-                                console.log('Looking for date:', routeDate);
-                                console.log('Customer:', customer);
-                                alert(`Job not found. Customer ID: ${customer.id}, Date: ${routeDate}. Found ${allJobsForCustomer.length} other jobs for this customer. Try refreshing the page.`);
+                                alert('Could not find job. Jobs in system: ' + oneTimeJobs.length);
                               }
                             } else {
                               // Open service completion modal for recurring services
@@ -5900,6 +5885,24 @@ Best regards,
                                   Mark Paid
                                 </button>
                               )}
+                              <button
+                                onClick={() => openEditServiceModal(s)}
+                                className="px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-xs"
+                                title="Edit"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Delete this ${s.jobType || 'service'} invoice for ${s.customerName}?`)) {
+                                    saveHistory(serviceHistory.filter(h => h.id !== s.id));
+                                  }
+                                }}
+                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                                title="Delete"
+                              >
+                                🗑️
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -6677,11 +6680,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.3
+        v2.0.4
       </div>
     </div>
   );
 }
+
 
 
 
