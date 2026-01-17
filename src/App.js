@@ -108,6 +108,9 @@ export default function PoolAuthority() {
   const [newLineItem, setNewLineItem] = useState({ type: 'labor', description: '', modelNumber: '', quantity: 1, price: 0 });
   const [savedQuoteItems, setSavedQuoteItems] = useState([]); // Saved items for reuse in quotes
   const [showSavedItems, setShowSavedItems] = useState(false);
+  const [showScheduleQuoteJob, setShowScheduleQuoteJob] = useState(false); // Modal for scheduling quote as job
+  const [quoteToSchedule, setQuoteToSchedule] = useState(null); // Quote being scheduled as job
+  const [quoteJobDate, setQuoteJobDate] = useState(''); // Selected date for the job
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState({ customerId: '', amount: 0, description: '', invoiceId: '' });
   const [showCompleteServiceModal, setShowCompleteServiceModal] = useState(false);
@@ -1819,22 +1822,40 @@ Best regards,
     saveQuotes(quotes.map(q => q.id === quoteId ? { ...q, status } : q));
   };
 
+  // Open modal to schedule quote as job
   const convertQuoteToJob = (quote) => {
-    const customer = customers.find(c => c.id === quote.customerId);
+    setQuoteToSchedule(quote);
+    setQuoteJobDate(getLocalDateString()); // Default to today
+    setShowScheduleQuoteJob(true);
+  };
+
+  // Actually create the job with selected date
+  const confirmQuoteToJob = () => {
+    if (!quoteToSchedule || !quoteJobDate) return;
+    
+    const customer = customers.find(c => c.id === quoteToSchedule.customerId);
     if (!customer) return;
     
     const job = {
       id: Date.now(),
-      customerId: quote.customerId,
-      customerName: quote.customerName,
+      customerId: quoteToSchedule.customerId,
+      customerName: quoteToSchedule.customerName,
       jobType: 'quoted-work',
-      date: getLocalDateString(),
-      price: quote.total,
-      notes: `From Quote ${quote.quoteNumber}: ${quote.items.map(i => i.description).join(', ')}`,
-      quoteId: quote.id
+      date: quoteJobDate,
+      price: quoteToSchedule.total,
+      notes: `From Quote ${quoteToSchedule.quoteNumber}: ${quoteToSchedule.items.map(i => i.description).join(', ')}`,
+      quoteId: quoteToSchedule.id,
+      quoteItems: quoteToSchedule.items // Store quote items for reference
     };
     saveJobs([...oneTimeJobs, job]);
-    updateQuoteStatus(quote.id, 'approved');
+    updateQuoteStatus(quoteToSchedule.id, 'approved');
+    
+    // Close modal and reset
+    setShowScheduleQuoteJob(false);
+    setQuoteToSchedule(null);
+    setQuoteJobDate('');
+    
+    showEmailNotification('success', `Job scheduled for ${new Date(quoteJobDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`);
   };
 
   // Convert approved quote directly to invoice
@@ -6463,6 +6484,127 @@ Best regards,
         </div>
       )}
 
+      {/* Schedule Quote as Job Modal */}
+      {showScheduleQuoteJob && quoteToSchedule && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-purple-700">📅 Schedule Job</h3>
+              <button onClick={() => { setShowScheduleQuoteJob(false); setQuoteToSchedule(null); }} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+
+            {/* Quote Info */}
+            <div className="bg-purple-50 p-4 rounded-lg mb-4">
+              <div className="font-bold text-lg">{quoteToSchedule.customerName}</div>
+              <div className="text-sm text-gray-600">Quote #{quoteToSchedule.quoteNumber}</div>
+              <div className="text-xl font-bold text-purple-700 mt-2">${quoteToSchedule.total.toFixed(2)}</div>
+              <div className="text-xs text-gray-500 mt-2">
+                {quoteToSchedule.items.map(i => i.description).join(', ')}
+              </div>
+            </div>
+
+            {/* Date Picker */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Date for Job</label>
+              <input
+                type="date"
+                value={quoteJobDate}
+                onChange={(e) => setQuoteJobDate(e.target.value)}
+                min={getLocalDateString()}
+                className="w-full px-4 py-3 border-2 border-purple-200 rounded-lg text-lg focus:border-purple-500 focus:outline-none"
+              />
+              {quoteJobDate && (
+                <div className="mt-2 text-center text-purple-700 font-medium">
+                  {(() => {
+                    const [y, m, d] = quoteJobDate.split('-').map(Number);
+                    return new Date(y, m - 1, d).toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      month: 'long', 
+                      day: 'numeric',
+                      year: 'numeric'
+                    });
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Date Buttons */}
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 mb-2">Quick Select</label>
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  onClick={() => setQuoteJobDate(getLocalDateString())}
+                  className={`py-2 px-3 rounded-lg text-sm font-medium ${
+                    quoteJobDate === getLocalDateString() 
+                      ? 'bg-purple-600 text-white' 
+                      : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    setQuoteJobDate(getLocalDateString(tomorrow));
+                  }}
+                  className={`py-2 px-3 rounded-lg text-sm font-medium ${
+                    (() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      return quoteJobDate === getLocalDateString(tomorrow);
+                    })() 
+                      ? 'bg-purple-600 text-white' 
+                      : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+                >
+                  Tomorrow
+                </button>
+                <button
+                  onClick={() => {
+                    const nextWeek = new Date();
+                    nextWeek.setDate(nextWeek.getDate() + 7);
+                    setQuoteJobDate(getLocalDateString(nextWeek));
+                  }}
+                  className="py-2 px-3 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200"
+                >
+                  +1 Week
+                </button>
+                <button
+                  onClick={() => {
+                    const nextMonth = new Date();
+                    nextMonth.setDate(nextMonth.getDate() + 30);
+                    setQuoteJobDate(getLocalDateString(nextMonth));
+                  }}
+                  className="py-2 px-3 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200"
+                >
+                  +1 Month
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowScheduleQuoteJob(false); setQuoteToSchedule(null); }}
+                className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmQuoteToJob}
+                disabled={!quoteJobDate}
+                className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-300"
+              >
+                ✓ Schedule Job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Global Complete Job Modal - shows on any tab */}
       {showCompleteJobModal && jobToComplete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -6861,11 +7003,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.7
+        v2.0.8
       </div>
     </div>
   );
 }
+
 
 
 
