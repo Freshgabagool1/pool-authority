@@ -4020,308 +4020,6 @@ Best regards,
               </div>
             )}
 
-            {/* Job Completion Modal */}
-            {showCompleteJobModal && jobToComplete && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-green-700">✓ Complete Job</h3>
-                    <button onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); }} className="text-gray-500 hover:text-gray-700">
-                      <Icons.X />
-                    </button>
-                  </div>
-
-                  {/* Job Info */}
-                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                    <div className="font-bold text-lg">{jobToComplete.customerName}</div>
-                    <div className="text-sm text-gray-600 capitalize">{jobToComplete.jobType.replace('-', ' ')}</div>
-                    {jobToComplete.notes && <div className="text-sm text-gray-500 mt-1">{jobToComplete.notes}</div>}
-                  </div>
-
-                  {/* Base Price */}
-                  <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg mb-4">
-                    <span className="font-medium">Job Price:</span>
-                    <span className="text-xl font-bold text-purple-700">${jobToComplete.price.toFixed(2)}</span>
-                  </div>
-
-                  {/* Add Wear Items */}
-                  {wearItems.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-bold text-gray-700 mb-2">Quick Add Wear Items</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {wearItems.map(item => (
-                          <button
-                            key={item.id}
-                            onClick={() => addWearItemToJob(item)}
-                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm flex items-center gap-1"
-                          >
-                            <span>{item.name}</span>
-                            <span className="text-green-600 font-medium">${item.price.toFixed(2)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Add Custom Item */}
-                  <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-                    <h4 className="font-medium text-gray-700 mb-2">Add Custom Item</h4>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Item name"
-                        className="flex-1 px-3 py-2 border rounded-lg text-sm"
-                        id="customJobItemName"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Price"
-                        className="w-24 px-3 py-2 border rounded-lg text-sm"
-                        id="customJobItemPrice"
-                      />
-                      <button
-                        onClick={() => {
-                          const name = document.getElementById('customJobItemName').value;
-                          const price = parseFloat(document.getElementById('customJobItemPrice').value) || 0;
-                          if (name && price > 0) {
-                            addCustomItemToJob(name, price);
-                            document.getElementById('customJobItemName').value = '';
-                            document.getElementById('customJobItemPrice').value = '';
-                          }
-                        }}
-                        className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Add Chemicals */}
-                  <div className="mb-4">
-                    <h4 className="font-bold text-gray-700 mb-2">Add Chemicals Used</h4>
-                    {chemicalInventory.length > 0 ? (
-                      <div className="space-y-2">
-                        {chemicalInventory.map(chem => (
-                          <div key={chem.id} className="flex items-center gap-3 p-3 bg-teal-50 rounded-lg">
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-800">{chem.name}</div>
-                              <div className="text-xs text-gray-500">
-                                ${chem.costPerUnit.toFixed(2)}/{chem.unit} • {chem.quantity} {chem.unit} in stock
-                              </div>
-                            </div>
-                            <input
-                              type="number"
-                              min="0"
-                              max={chem.quantity}
-                              step="0.1"
-                              placeholder="Qty"
-                              className="w-20 px-2 py-1 border rounded text-center"
-                              id={`job-chem-qty-${chem.id}`}
-                            />
-                            <button
-                              onClick={() => {
-                                const input = document.getElementById(`job-chem-qty-${chem.id}`);
-                                const qty = parseFloat(input.value) || 0;
-                                if (qty > 0 && qty <= chem.quantity) {
-                                  addChemicalToJob(chem, qty);
-                                  input.value = '';
-                                }
-                              }}
-                              className="px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 text-sm"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm p-3 bg-gray-50 rounded-lg">
-                        No chemicals in inventory. Add chemicals in the Chemicals tab.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Chemicals Added */}
-                  {jobChemicals.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-bold text-gray-700 mb-2">Chemicals for This Job</h4>
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full">
-                          <thead className="bg-teal-50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-sm">Chemical</th>
-                              <th className="px-3 py-2 text-left text-sm">Qty</th>
-                              <th className="px-3 py-2 text-left text-sm">Cost</th>
-                              <th className="px-3 py-2"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {jobChemicals.map(chem => (
-                              <tr key={chem.id} className="border-t">
-                                <td className="px-3 py-2 text-sm">{chem.name}</td>
-                                <td className="px-3 py-2 text-sm">{chem.quantityUsed} {chem.unit}</td>
-                                <td className="px-3 py-2 text-sm font-medium">${(chem.quantityUsed * chem.costPerUnit).toFixed(2)}</td>
-                                <td className="px-3 py-2">
-                                  <button 
-                                    onClick={() => removeChemicalFromJob(chem.id)}
-                                    className="text-red-500 hover:text-red-700"
-                                  >
-                                    <Icons.X />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className="border-t bg-teal-50">
-                              <td colSpan="2" className="px-3 py-2 font-bold text-right">Chemical Total:</td>
-                              <td colSpan="2" className="px-3 py-2 font-bold text-teal-700">
-                                ${jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0).toFixed(2)}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Items Added */}
-                  {jobCompletionItems.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-bold text-gray-700 mb-2">Additional Items</h4>
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full">
-                          <thead className="bg-purple-50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-sm">Item</th>
-                              <th className="px-3 py-2 text-left text-sm">Qty</th>
-                              <th className="px-3 py-2 text-left text-sm">Total</th>
-                              <th className="px-3 py-2"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {jobCompletionItems.map(item => (
-                              <tr key={item.id} className="border-t">
-                                <td className="px-3 py-2 text-sm">{item.name}</td>
-                                <td className="px-3 py-2 text-sm">
-                                  <div className="flex items-center gap-1">
-                                    <button 
-                                      onClick={() => {
-                                        if (item.quantity > 1) {
-                                          setJobCompletionItems(jobCompletionItems.map(i => 
-                                            i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
-                                          ));
-                                        }
-                                      }}
-                                      className="w-6 h-6 bg-gray-200 rounded text-sm hover:bg-gray-300"
-                                    >-</button>
-                                    <span className="w-6 text-center">{item.quantity}</span>
-                                    <button 
-                                      onClick={() => {
-                                        setJobCompletionItems(jobCompletionItems.map(i => 
-                                          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-                                        ));
-                                      }}
-                                      className="w-6 h-6 bg-gray-200 rounded text-sm hover:bg-gray-300"
-                                    >+</button>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-2 text-sm font-medium">${(item.price * item.quantity).toFixed(2)}</td>
-                                <td className="px-3 py-2">
-                                  <button onClick={() => removeItemFromJob(item.id)} className="text-red-500 hover:text-red-700">
-                                    <Icons.X />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className="border-t bg-purple-50">
-                              <td colSpan="2" className="px-3 py-2 font-bold text-right">Items Total:</td>
-                              <td colSpan="2" className="px-3 py-2 font-bold text-purple-700">
-                                ${jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0).toFixed(2)}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Grand Total */}
-                  <div className="bg-green-50 p-4 rounded-lg mb-4 border-2 border-green-200">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-sm text-gray-600">Job Price</div>
-                        <div className="text-sm text-gray-600">Additional Items</div>
-                        <div className="text-sm text-gray-600">Chemicals</div>
-                        <div className="font-bold text-lg mt-1">Grand Total</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm">${jobToComplete.price.toFixed(2)}</div>
-                        <div className="text-sm">${jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0).toFixed(2)}</div>
-                        <div className="text-sm">${jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0).toFixed(2)}</div>
-                        <div className="font-bold text-xl text-green-700">
-                          ${(jobToComplete.price + jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0) + jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0)).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Technician Notes */}
-                  <div className="mb-4">
-                    <h4 className="font-bold text-gray-700 mb-2">📝 Technician Notes (sent to customer)</h4>
-                    <textarea
-                      value={jobCompletionNotes}
-                      onChange={e => setJobCompletionNotes(e.target.value)}
-                      placeholder="Any notes for the customer about the work performed, issues found, recommendations..."
-                      className="w-full px-3 py-2 border rounded-lg text-sm"
-                      rows="3"
-                    />
-                  </div>
-
-                  {/* Send Email Checkbox */}
-                  {(() => {
-                    const customer = customers.find(c => c.id === parseInt(jobToComplete.customerId));
-                    return customer?.email ? (
-                      <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={sendJobEmailOnComplete}
-                            onChange={e => setSendJobEmailOnComplete(e.target.checked)}
-                            className="w-5 h-5 text-green-600 rounded"
-                          />
-                          <div>
-                            <span className="font-medium text-green-800">📧 Send job completion email</span>
-                            <div className="text-xs text-green-600">Will send to: {customer.email}</div>
-                          </div>
-                        </label>
-                      </div>
-                    ) : (
-                      <div className="mb-4 p-3 bg-amber-50 rounded-lg text-sm text-amber-700">
-                        ⚠️ No email on file for this customer. Add their email in the Customers tab to enable job completion emails.
-                      </div>
-                    );
-                  })()}
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); setJobCompletionNotes(''); }}
-                      className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={completeJobWithItems}
-                      disabled={isSendingEmail}
-                      className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-green-400"
-                    >
-                      {isSendingEmail ? '⏳ Sending...' : '✓ Complete Job'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {showAddJob && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl p-6 w-full max-w-md">
@@ -6765,6 +6463,308 @@ Best regards,
         </div>
       )}
 
+      {/* Global Complete Job Modal - shows on any tab */}
+      {showCompleteJobModal && jobToComplete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-green-700">✓ Complete Job</h3>
+              <button onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); }} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+
+            {/* Job Info */}
+            <div className="bg-gray-50 p-4 rounded-lg mb-4">
+              <div className="font-bold text-lg">{jobToComplete.customerName}</div>
+              <div className="text-sm text-gray-600 capitalize">{jobToComplete.jobType?.replace('-', ' ') || 'Service'}</div>
+              {jobToComplete.notes && <div className="text-sm text-gray-500 mt-1">{jobToComplete.notes}</div>}
+            </div>
+
+            {/* Base Price */}
+            <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg mb-4">
+              <span className="font-medium">Job Price:</span>
+              <span className="text-xl font-bold text-purple-700">${jobToComplete.price?.toFixed(2) || '0.00'}</span>
+            </div>
+
+            {/* Add Wear Items */}
+            {wearItems.length > 0 && (
+              <div className="mb-4">
+                <h4 className="font-bold text-gray-700 mb-2">Quick Add Wear Items</h4>
+                <div className="flex flex-wrap gap-2">
+                  {wearItems.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => addWearItemToJob(item)}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm flex items-center gap-1"
+                    >
+                      <span>{item.name}</span>
+                      <span className="text-green-600 font-medium">${item.price.toFixed(2)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add Custom Item */}
+            <div className="mb-4 bg-gray-50 p-3 rounded-lg">
+              <h4 className="font-medium text-gray-700 mb-2">Add Custom Item</h4>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Item name"
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                  id="globalCustomJobItemName"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Price"
+                  className="w-24 px-3 py-2 border rounded-lg text-sm"
+                  id="globalCustomJobItemPrice"
+                />
+                <button
+                  onClick={() => {
+                    const name = document.getElementById('globalCustomJobItemName').value;
+                    const price = parseFloat(document.getElementById('globalCustomJobItemPrice').value) || 0;
+                    if (name && price > 0) {
+                      addCustomItemToJob(name, price);
+                      document.getElementById('globalCustomJobItemName').value = '';
+                      document.getElementById('globalCustomJobItemPrice').value = '';
+                    }
+                  }}
+                  className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {/* Add Chemicals */}
+            <div className="mb-4">
+              <h4 className="font-bold text-gray-700 mb-2">Add Chemicals Used</h4>
+              {chemicalInventory.length > 0 ? (
+                <div className="space-y-2">
+                  {chemicalInventory.map(chem => (
+                    <div key={chem.id} className="flex items-center gap-3 p-3 bg-teal-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-800">{chem.name}</div>
+                        <div className="text-xs text-gray-500">
+                          ${chem.costPerUnit.toFixed(2)}/{chem.unit} • {chem.quantity} {chem.unit} in stock
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max={chem.quantity}
+                        step="0.1"
+                        placeholder="Qty"
+                        className="w-20 px-2 py-1 border rounded text-center"
+                        id={`global-job-chem-qty-${chem.id}`}
+                      />
+                      <button
+                        onClick={() => {
+                          const input = document.getElementById(`global-job-chem-qty-${chem.id}`);
+                          const qty = parseFloat(input.value) || 0;
+                          if (qty > 0 && qty <= chem.quantity) {
+                            addChemicalToJob(chem, qty);
+                            input.value = '';
+                          }
+                        }}
+                        className="px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 text-sm"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm p-3 bg-gray-50 rounded-lg">
+                  No chemicals in inventory. Add chemicals in the Chemicals tab.
+                </p>
+              )}
+            </div>
+
+            {/* Chemicals Added */}
+            {jobChemicals.length > 0 && (
+              <div className="mb-4">
+                <h4 className="font-bold text-gray-700 mb-2">Chemicals for This Job</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-teal-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-sm">Chemical</th>
+                        <th className="px-3 py-2 text-left text-sm">Qty</th>
+                        <th className="px-3 py-2 text-left text-sm">Cost</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobChemicals.map(chem => (
+                        <tr key={chem.id} className="border-t">
+                          <td className="px-3 py-2 text-sm">{chem.name}</td>
+                          <td className="px-3 py-2 text-sm">{chem.quantityUsed} {chem.unit}</td>
+                          <td className="px-3 py-2 text-sm font-medium">${(chem.quantityUsed * chem.costPerUnit).toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            <button 
+                              onClick={() => removeChemicalFromJob(chem.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Icons.X />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-teal-50">
+                        <td colSpan="2" className="px-3 py-2 font-bold text-right">Chemical Total:</td>
+                        <td colSpan="2" className="px-3 py-2 font-bold text-teal-700">
+                          ${jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Items Added */}
+            {jobCompletionItems.length > 0 && (
+              <div className="mb-4">
+                <h4 className="font-bold text-gray-700 mb-2">Additional Items</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-purple-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-sm">Item</th>
+                        <th className="px-3 py-2 text-left text-sm">Qty</th>
+                        <th className="px-3 py-2 text-left text-sm">Total</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobCompletionItems.map(item => (
+                        <tr key={item.id} className="border-t">
+                          <td className="px-3 py-2 text-sm">{item.name}</td>
+                          <td className="px-3 py-2 text-sm">
+                            <div className="flex items-center gap-1">
+                              <button 
+                                onClick={() => {
+                                  if (item.quantity > 1) {
+                                    setJobCompletionItems(jobCompletionItems.map(i => 
+                                      i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
+                                    ));
+                                  }
+                                }}
+                                className="w-6 h-6 bg-gray-200 rounded text-sm hover:bg-gray-300"
+                              >-</button>
+                              <span className="w-6 text-center">{item.quantity}</span>
+                              <button 
+                                onClick={() => {
+                                  setJobCompletionItems(jobCompletionItems.map(i => 
+                                    i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                                  ));
+                                }}
+                                className="w-6 h-6 bg-gray-200 rounded text-sm hover:bg-gray-300"
+                              >+</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-sm font-medium">${(item.price * item.quantity).toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            <button onClick={() => removeItemFromJob(item.id)} className="text-red-500 hover:text-red-700">
+                              <Icons.X />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-purple-50">
+                        <td colSpan="2" className="px-3 py-2 font-bold text-right">Items Total:</td>
+                        <td colSpan="2" className="px-3 py-2 font-bold text-purple-700">
+                          ${jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Grand Total */}
+            <div className="bg-green-50 p-4 rounded-lg mb-4 border-2 border-green-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-sm text-gray-600">Job Price</div>
+                  <div className="text-sm text-gray-600">Additional Items</div>
+                  <div className="text-sm text-gray-600">Chemicals</div>
+                  <div className="font-bold text-lg mt-1">Grand Total</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm">${jobToComplete.price?.toFixed(2) || '0.00'}</div>
+                  <div className="text-sm">${jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0).toFixed(2)}</div>
+                  <div className="text-sm">${jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0).toFixed(2)}</div>
+                  <div className="font-bold text-xl text-green-700">
+                    ${((jobToComplete.price || 0) + jobCompletionItems.reduce((sum, i) => sum + (i.price * i.quantity), 0) + jobChemicals.reduce((sum, c) => sum + (c.quantityUsed * c.costPerUnit), 0)).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Technician Notes */}
+            <div className="mb-4">
+              <h4 className="font-bold text-gray-700 mb-2">📝 Technician Notes (sent to customer)</h4>
+              <textarea
+                value={jobCompletionNotes}
+                onChange={e => setJobCompletionNotes(e.target.value)}
+                placeholder="Any notes for the customer about the work performed, issues found, recommendations..."
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                rows="3"
+              />
+            </div>
+
+            {/* Send Email Checkbox */}
+            {(() => {
+              const customer = customers.find(c => c.id === parseInt(jobToComplete.customerId));
+              return customer?.email ? (
+                <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendJobEmailOnComplete}
+                      onChange={e => setSendJobEmailOnComplete(e.target.checked)}
+                      className="w-5 h-5 text-green-600 rounded"
+                    />
+                    <div>
+                      <span className="font-medium text-green-800">📧 Send job completion email</span>
+                      <div className="text-xs text-green-600">Will send to: {customer.email}</div>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="mb-4 p-3 bg-amber-50 rounded-lg text-sm text-amber-700">
+                  ⚠️ No email on file for this customer. Add their email in the Customers tab to enable job completion emails.
+                </div>
+              );
+            })()}
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowCompleteJobModal(false); setJobToComplete(null); setJobCompletionItems([]); setJobChemicals([]); setJobCompletionNotes(''); }}
+                className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={completeJobWithItems}
+                disabled={isSendingEmail}
+                className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-green-400"
+              >
+                {isSendingEmail ? '⏳ Sending...' : '✓ Complete Job'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Method Modal */}
       {showPaymentMethodModal && paymentToMark && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -6861,11 +6861,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.6
+        v2.0.7
       </div>
     </div>
   );
 }
+
 
 
 
