@@ -3073,7 +3073,7 @@ Best regards,
                           <button onClick={() => toggleRouteCustomer(customer)} className="text-red-500 hover:text-red-700">
                             <Icons.X />
                           </button>
-                        )}}
+                        )}
                       </div>
                     ))}
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
@@ -6861,11 +6861,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.5
+        v2.0.6
       </div>
     </div>
   );
 }
+
 
 
 
