@@ -617,8 +617,15 @@ Best regards,
     // Also add customers from one-time jobs scheduled for this date
     oneTimeJobs.filter(j => j.date === dateStr).forEach(job => {
       const customer = customers.find(c => c.id === parseInt(job.customerId));
-      if (customer && !scheduledCustomers.find(c => c.id === customer.id)) {
-        scheduledCustomers.push({ ...customer, isOneTimeJob: true, jobType: job.jobType, jobPrice: job.price });
+      if (customer && !scheduledCustomers.find(c => c.id === customer.id && c.isOneTimeJob)) {
+        scheduledCustomers.push({ 
+          ...customer, 
+          isOneTimeJob: true, 
+          jobType: job.jobType, 
+          jobPrice: job.price,
+          jobId: job.id,
+          jobData: job // Store full job for completion modal
+        });
       }
     });
     
@@ -639,7 +646,10 @@ Best regards,
   };
 
   const formatRouteDate = (dateStr) => {
-    const date = new Date(dateStr);
+    // Parse the date string as local time, not UTC
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
     const today = getLocalDateString();
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -2896,7 +2906,15 @@ Best regards,
                         </div>
                         <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
                         <button
-                          onClick={() => completeService(customer)}
+                          onClick={() => {
+                            if (customer.isOneTimeJob && customer.jobData) {
+                              // Open job completion modal for one-time jobs
+                              openCompleteJobModal(customer.jobData);
+                            } else {
+                              // Open service completion modal for recurring services
+                              completeService(customer);
+                            }
+                          }}
                           className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
                         >
                           Complete
@@ -6627,11 +6645,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.0
+        v2.0.1
       </div>
     </div>
   );
 }
+
 
 
 
