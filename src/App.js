@@ -8,6 +8,7 @@ const PAYMENT_SERVER_URL = 'https://pool-authority-server.onrender.com';
 // Icons as simple SVG components
 const Icons = {
   Users: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
   MapPin: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
@@ -79,6 +80,18 @@ const getPaymentTermsText = (terms) => {
   }
 };
 
+// Employee colors for visual identification
+const employeeColors = [
+  { bg: '#3b82f6', text: '#ffffff', name: 'Blue' },
+  { bg: '#10b981', text: '#ffffff', name: 'Green' },
+  { bg: '#f59e0b', text: '#000000', name: 'Amber' },
+  { bg: '#ef4444', text: '#ffffff', name: 'Red' },
+  { bg: '#8b5cf6', text: '#ffffff', name: 'Purple' },
+  { bg: '#ec4899', text: '#ffffff', name: 'Pink' },
+  { bg: '#06b6d4', text: '#ffffff', name: 'Cyan' },
+  { bg: '#84cc16', text: '#000000', name: 'Lime' },
+];
+
 export default function PoolAuthority() {
   // State
   const [customers, setCustomers] = useState([]);
@@ -103,6 +116,13 @@ export default function PoolAuthority() {
   const [showCreateQuote, setShowCreateQuote] = useState(false);
   const [quotes, setQuotes] = useState([]);
   const [customInvoice, setCustomInvoice] = useState({ customerId: '', items: [], notes: '' });
+  
+  // Employee management
+  const [employees, setEmployees] = useState([]);
+  const [showEmployeeManager, setShowEmployeeManager] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({ name: '', phone: '', email: '' });
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [selectedRouteEmployee, setSelectedRouteEmployee] = useState('all'); // Filter routes by employee
   const [currentQuote, setCurrentQuote] = useState({ customerId: '', items: [], notes: '', validDays: 30 });
   const [editingQuoteId, setEditingQuoteId] = useState(null); // Track if editing existing quote
   const [newLineItem, setNewLineItem] = useState({ type: 'labor', description: '', modelNumber: '', quantity: 1, price: 0 });
@@ -302,8 +322,8 @@ Best regards,
   useEffect(() => {
     const loadData = () => {
       try {
-        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers', 'pool-saved-quote-items'];
-        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers, setSavedQuoteItems];
+        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers', 'pool-saved-quote-items', 'pool-employees'];
+        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers, setSavedQuoteItems, setEmployees];
         for (let i = 0; i < keys.length; i++) {
           const result = localStorage.getItem(keys[i]);
           if (result) {
@@ -343,6 +363,7 @@ Best regards,
   const savePaidInvoices = (data) => saveData('pool-paid-invoices', data, setPaidInvoices);
   const saveBilledCustomers = (data) => saveData('pool-billed-customers', data, setBilledCustomers);
   const saveSavedQuoteItems = (data) => saveData('pool-saved-quote-items', data, setSavedQuoteItems);
+  const saveEmployees = (data) => saveData('pool-employees', data, setEmployees);
 
   // Searchable Customer Select Component
   const CustomerSelect = ({ value, onChange, placeholder = "Search or select customer...", className = "" }) => {
@@ -588,15 +609,18 @@ Best regards,
   };
 
   // Get customers scheduled for a specific date (from recurring services)
-  const getScheduledCustomersForDate = (dateStr) => {
-    const scheduledCustomers = [];
+  const getScheduledCustomersForDate = (dateStr, employeeFilter = 'all') => {
+    let scheduledCustomers = [];
     
     // Get customers from recurring services
     recurringServices.filter(r => r.active).forEach(r => {
       const customer = customers.find(c => c.id === r.customerId);
       if (!customer) return;
       
-      const serviceDate = new Date(dateStr);
+      // Filter by employee if specified
+      if (employeeFilter !== 'all' && r.employeeId !== employeeFilter) return;
+      
+      const serviceDate = new Date(dateStr + 'T12:00:00');
       const startDate = new Date(r.startDate || customer.createdDate);
       if (serviceDate < startDate) return;
       
@@ -613,34 +637,59 @@ Best regards,
         isScheduled = serviceDate.getDate() === startDate.getDate();
       }
       
-      if (isScheduled && !scheduledCustomers.find(c => c.id === customer.id)) {
-        scheduledCustomers.push({ ...customer, recurringId: r.id, frequency: r.frequency });
+      if (isScheduled && !scheduledCustomers.find(c => c.id === customer.id && c.recurringId === r.id)) {
+        scheduledCustomers.push({ 
+          ...customer, 
+          recurringId: r.id, 
+          frequency: r.frequency,
+          scheduledTime: r.scheduledTime || null, // Add time
+          employeeId: r.employeeId || null // Add employee
+        });
       }
     });
     
     // Also add customers from one-time jobs scheduled for this date
     oneTimeJobs.filter(j => j.date === dateStr).forEach(job => {
+      // Filter by employee if specified
+      if (employeeFilter !== 'all' && job.employeeId !== employeeFilter) return;
+      
       const customer = customers.find(c => c.id === parseInt(job.customerId));
-      if (customer && !scheduledCustomers.find(c => c.id === customer.id && c.isOneTimeJob)) {
+      if (customer && !scheduledCustomers.find(c => c.id === customer.id && c.isOneTimeJob && c.jobId === job.id)) {
         scheduledCustomers.push({ 
           ...customer, 
           isOneTimeJob: true, 
           jobType: job.jobType, 
           jobPrice: job.price,
           jobId: job.id,
-          jobData: job // Store full job for completion modal
+          jobData: job,
+          scheduledTime: job.scheduledTime || null, // Add time
+          employeeId: job.employeeId || null // Add employee
         });
       }
+    });
+    
+    // Sort: timed appointments first (by time), then untimed
+    scheduledCustomers.sort((a, b) => {
+      // Both have times - sort by time
+      if (a.scheduledTime && b.scheduledTime) {
+        return a.scheduledTime.localeCompare(b.scheduledTime);
+      }
+      // Only a has time - a comes first
+      if (a.scheduledTime && !b.scheduledTime) return -1;
+      // Only b has time - b comes first
+      if (!a.scheduledTime && b.scheduledTime) return 1;
+      // Neither has time - keep original order (could add distance sorting here later)
+      return 0;
     });
     
     return scheduledCustomers;
   };
 
-  // Update route when date changes
+  // Update route when date changes or employee filter changes
   useEffect(() => {
-    const scheduled = getScheduledCustomersForDate(routeDate);
+    const scheduled = getScheduledCustomersForDate(routeDate, selectedRouteEmployee);
     setRouteCustomers(scheduled);
-  }, [routeDate, recurringServices, oneTimeJobs, customers]);
+  }, [routeDate, recurringServices, oneTimeJobs, customers, selectedRouteEmployee, employees]);
 
   // Helper to change route date
   const changeRouteDate = (days) => {
@@ -907,7 +956,7 @@ Best regards,
   };
 
   // Recurring service functions
-  const addRecurringService = (customerId, frequency, dayOfWeek, startDate) => {
+  const addRecurringService = (customerId, frequency, dayOfWeek, startDate, scheduledTime = null, employeeId = null) => {
     const customer = customers.find(c => c.id === customerId);
     if (!customer) return;
     const recurring = {
@@ -917,6 +966,8 @@ Best regards,
       frequency,
       dayOfWeek: parseInt(dayOfWeek),
       startDate,
+      scheduledTime, // Optional time for appointment
+      employeeId: employeeId ? parseInt(employeeId) : null, // Optional employee assignment
       active: true
     };
     saveRecurring([...recurringServices, recurring]);
@@ -924,6 +975,16 @@ Best regards,
 
   const deleteRecurringService = (id) => {
     saveRecurring(recurringServices.filter(r => r.id !== id));
+  };
+
+  // Update recurring service (for editing time/employee)
+  const updateRecurringService = (id, updates) => {
+    saveRecurring(recurringServices.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
+  // Update job (for editing time/employee)
+  const updateJob = (id, updates) => {
+    saveJobs(oneTimeJobs.map(j => j.id === id ? { ...j, ...updates } : j));
   };
 
   // Custom invoice functions
@@ -2284,8 +2345,14 @@ Best regards,
   const addJob = () => {
     if (newJob.customerId && newJob.date) {
       const customer = customers.find(c => c.id === parseInt(newJob.customerId));
-      saveJobs([...oneTimeJobs, { ...newJob, id: Date.now(), customerName: customer?.name || 'Unknown' }]);
-      setNewJob({ customerId: '', jobType: 'opening', date: '', price: 250, notes: '' });
+      saveJobs([...oneTimeJobs, { 
+        ...newJob, 
+        id: Date.now(), 
+        customerName: customer?.name || 'Unknown',
+        scheduledTime: newJob.scheduledTime || null,
+        employeeId: newJob.employeeId || null
+      }]);
+      setNewJob({ customerId: '', jobType: 'opening', date: '', price: 250, notes: '', scheduledTime: null, employeeId: null });
       setShowAddJob(false);
     }
   };
@@ -2891,7 +2958,7 @@ Best regards,
         {/* ROUTES TAB */}
         {activeTab === 'routes' && (
           <div className="space-y-6">
-            {/* Date Navigation */}
+            {/* Date Navigation & Employee Filter */}
             <div className="bg-white rounded-xl p-4 shadow-lg">
               <div className="flex items-center justify-between">
                 <button
@@ -2924,6 +2991,40 @@ Best regards,
                   <Icons.ChevronRight />
                 </button>
               </div>
+              
+              {/* Employee Filter & Management */}
+              <div className="mt-4 pt-4 border-t flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">Filter by Employee:</label>
+                  <select
+                    value={selectedRouteEmployee}
+                    onChange={(e) => setSelectedRouteEmployee(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="all">All Employees</option>
+                    <option value="">Unassigned</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                  {selectedRouteEmployee !== 'all' && (
+                    <button
+                      onClick={() => setSelectedRouteEmployee('all')}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Show All
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowEmployeeManager(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-all"
+                >
+                  <Icons.Users />
+                  Manage Employees
+                </button>
+              </div>
+
               {routeDate !== getLocalDateString() && (
                 <div className="mt-3 text-center">
                   <button
@@ -3022,76 +3123,117 @@ Best regards,
 
                 {routeCustomers.length > 0 ? (
                   <div className="space-y-2">
-                    {routeCustomers.map((customer, idx) => (
-                      <div key={`${customer.id}-${customer.isOneTimeJob ? 'job' : 'recurring'}-${idx}`} className={`flex items-center gap-3 p-3 rounded-lg ${customer.recurringId ? 'bg-blue-50' : customer.isOneTimeJob ? 'bg-purple-50' : 'bg-gray-50'}`}>
-                        <div className="flex flex-col gap-1">
-                          <button onClick={() => moveInRoute(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▲</button>
-                          <button onClick={() => moveInRoute(idx, 1)} disabled={idx === routeCustomers.length - 1} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▼</button>
-                        </div>
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold" style={{ background: customer.isOneTimeJob ? '#7c3aed' : '#1e3a5f' }}>
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium flex items-center gap-2">
-                            {customer.name}
-                            {customer.recurringId && (
-                              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded capitalize">{customer.frequency}</span>
-                            )}
-                            {customer.isOneTimeJob && (
-                              <span className="text-xs bg-purple-200 text-purple-800 px-2 py-0.5 rounded">{customer.jobType}</span>
-                            )}
+                    {routeCustomers.map((customer, idx) => {
+                      const employee = customer.employeeId ? employees.find(e => e.id === customer.employeeId) : null;
+                      const employeeColor = employee ? employeeColors[employees.indexOf(employee) % employeeColors.length] : null;
+                      
+                      return (
+                        <div key={`${customer.id}-${customer.isOneTimeJob ? 'job' : 'recurring'}-${idx}`} className={`flex items-center gap-3 p-3 rounded-lg ${customer.recurringId ? 'bg-blue-50' : customer.isOneTimeJob ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                          <div className="flex flex-col gap-1">
+                            <button onClick={() => moveInRoute(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▲</button>
+                            <button onClick={() => moveInRoute(idx, 1)} disabled={idx === routeCustomers.length - 1} className="text-gray-400 hover:text-gray-600 disabled:opacity-30">▼</button>
                           </div>
-                          <div className="text-sm text-gray-500">{customer.address}</div>
-                          {customer.gateCode && <span className="text-xs text-blue-600 mr-2">Gate: {customer.gateCode}</span>}
-                          {customer.dogName && <span className="text-xs text-amber-600">🐕 {customer.dogName}</span>}
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold" style={{ background: customer.isOneTimeJob ? '#7c3aed' : '#1e3a5f' }}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium flex items-center gap-2 flex-wrap">
+                              {customer.name}
+                              {customer.scheduledTime && (
+                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">
+                                  🕐 {customer.scheduledTime}
+                                </span>
+                              )}
+                              {customer.recurringId && (
+                                <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded capitalize">{customer.frequency}</span>
+                              )}
+                              {customer.isOneTimeJob && (
+                                <span className="text-xs bg-purple-200 text-purple-800 px-2 py-0.5 rounded">{customer.jobType}</span>
+                              )}
+                              {employee && (
+                                <span 
+                                  className="text-xs px-2 py-0.5 rounded"
+                                  style={{ backgroundColor: employeeColor?.bg, color: employeeColor?.text }}
+                                >
+                                  {employee.name}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">{customer.address}</div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {customer.gateCode && <span className="text-xs text-blue-600">Gate: {customer.gateCode}</span>}
+                              {customer.dogName && <span className="text-xs text-amber-600">🐕 {customer.dogName}</span>}
+                              {/* Quick Reassign Dropdown */}
+                              {(customer.recurringId || customer.isOneTimeJob) && employees.length > 0 && (
+                                <select
+                                  value={customer.employeeId || ''}
+                                  onChange={(e) => {
+                                    const newEmployeeId = e.target.value ? parseInt(e.target.value) : null;
+                                    if (customer.isOneTimeJob) {
+                                      updateJob(customer.jobId, { employeeId: newEmployeeId });
+                                    } else if (customer.recurringId) {
+                                      updateRecurringService(customer.recurringId, { employeeId: newEmployeeId });
+                                    }
+                                  }}
+                                  className="text-xs px-2 py-1 border rounded bg-white"
+                                  title="Assign to employee"
+                                >
+                                  <option value="">Unassigned</option>
+                                  {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                          <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
+                          {customer.isOneTimeJob ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('JOB Complete clicked', customer);
+                                const job = customer.jobData || 
+                                            oneTimeJobs.find(j => j.id === customer.jobId) ||
+                                            oneTimeJobs.find(j => String(j.customerId) === String(customer.id) && j.date === routeDate);
+                                console.log('Found job:', job);
+                                if (job) {
+                                  setJobToComplete(job);
+                                  setJobCompletionItems([]);
+                                  setJobChemicals([]);
+                                  setJobCompletionNotes('');
+                                  setShowCompleteJobModal(true);
+                                } else {
+                                  alert('Job not found. oneTimeJobs count: ' + oneTimeJobs.length);
+                                }
+                              }}
+                              className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+                            >
+                              Complete Job
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('SERVICE Complete clicked', customer);
+                                completeService(customer);
+                              }}
+                              className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                            >
+                              Complete
+                            </button>
+                          )}
+                          {!customer.recurringId && !customer.isOneTimeJob && (
+                            <button onClick={() => toggleRouteCustomer(customer)} className="text-red-500 hover:text-red-700">
+                              <Icons.X />
+                            </button>
+                          )}
                         </div>
-                        <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
-                        {customer.isOneTimeJob ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              console.log('JOB Complete clicked', customer);
-                              const job = customer.jobData || 
-                                          oneTimeJobs.find(j => j.id === customer.jobId) ||
-                                          oneTimeJobs.find(j => String(j.customerId) === String(customer.id) && j.date === routeDate);
-                              console.log('Found job:', job);
-                              if (job) {
-                                setJobToComplete(job);
-                                setJobCompletionItems([]);
-                                setJobChemicals([]);
-                                setJobCompletionNotes('');
-                                setShowCompleteJobModal(true);
-                              } else {
-                                alert('Job not found. oneTimeJobs count: ' + oneTimeJobs.length);
-                              }
-                            }}
-                            className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
-                          >
-                            Complete Job
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              console.log('SERVICE Complete clicked', customer);
-                              completeService(customer);
-                            }}
-                            className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
-                          >
-                            Complete
-                          </button>
-                        )}
-                        {!customer.recurringId && !customer.isOneTimeJob && (
-                          <button onClick={() => toggleRouteCustomer(customer)} className="text-red-500 hover:text-red-700">
-                            <Icons.X />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
                       <div className="flex justify-between items-center">
                         <div className="text-lg font-bold text-gray-800">
@@ -3428,7 +3570,7 @@ Best regards,
             {/* Add Recurring Service */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Set Up Recurring Service</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
                   <select
@@ -3461,6 +3603,8 @@ Best regards,
                     <option value="0">Sunday</option>
                   </select>
                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                   <input
@@ -3470,6 +3614,27 @@ Best regards,
                     className="w-full px-4 py-2 border rounded-lg"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Scheduled Time <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="time"
+                    id="recurringTime"
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Assign To <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <select id="recurringEmployee" className="w-full px-4 py-2 border rounded-lg">
+                    <option value="">Unassigned</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -3477,9 +3642,13 @@ Best regards,
                   const frequency = document.getElementById('recurringFrequency').value;
                   const dayOfWeek = document.getElementById('recurringDay').value;
                   const startDate = document.getElementById('recurringStart').value;
+                  const scheduledTime = document.getElementById('recurringTime').value || null;
+                  const employeeId = document.getElementById('recurringEmployee').value || null;
                   if (customerId) {
-                    addRecurringService(customerId, frequency, dayOfWeek, startDate);
+                    addRecurringService(customerId, frequency, dayOfWeek, startDate, scheduledTime, employeeId);
                     document.getElementById('recurringCustomer').value = '';
+                    document.getElementById('recurringTime').value = '';
+                    document.getElementById('recurringEmployee').value = '';
                   }
                 }}
                 className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
@@ -3495,11 +3664,28 @@ Best regards,
                 <div className="space-y-3">
                   {recurringServices.filter(r => r.active).map(recurring => {
                     const customer = customers.find(c => c.id === recurring.customerId);
+                    const employee = recurring.employeeId ? employees.find(e => e.id === recurring.employeeId) : null;
+                    const employeeColor = employee ? employeeColors[employees.indexOf(employee) % employeeColors.length] : null;
                     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                     return (
                       <div key={recurring.id} className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                        <div>
-                          <div className="font-bold text-gray-800">{recurring.customerName}</div>
+                        <div className="flex-1">
+                          <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                            {recurring.customerName}
+                            {recurring.scheduledTime && (
+                              <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">
+                                🕐 {recurring.scheduledTime}
+                              </span>
+                            )}
+                            {employee && (
+                              <span 
+                                className="text-xs px-2 py-0.5 rounded"
+                                style={{ backgroundColor: employeeColor?.bg, color: employeeColor?.text }}
+                              >
+                                {employee.name}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-sm text-gray-600">
                             <span className="font-medium text-purple-700 capitalize">{recurring.frequency}</span>
                             {' on '}{dayNames[recurring.dayOfWeek || 1]}
@@ -3509,10 +3695,31 @@ Best regards,
                           {customer && (
                             <div className="text-sm text-green-600 font-medium">${customer.weeklyRate}/visit</div>
                           )}
+                          {/* Quick edit controls */}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <input
+                              type="time"
+                              value={recurring.scheduledTime || ''}
+                              onChange={(e) => updateRecurringService(recurring.id, { scheduledTime: e.target.value || null })}
+                              className="text-xs px-2 py-1 border rounded"
+                              title="Set appointment time"
+                            />
+                            <select
+                              value={recurring.employeeId || ''}
+                              onChange={(e) => updateRecurringService(recurring.id, { employeeId: e.target.value ? parseInt(e.target.value) : null })}
+                              className="text-xs px-2 py-1 border rounded bg-white"
+                              title="Assign to employee"
+                            >
+                              <option value="">Unassigned</option>
+                              {employees.map(emp => (
+                                <option key={emp.id} value={emp.id}>{emp.name}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                         <button
                           onClick={() => deleteRecurringService(recurring.id)}
-                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 ml-3"
                         >
                           Cancel
                         </button>
@@ -4080,6 +4287,19 @@ Best regards,
                         />
                       </div>
                       <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Time <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                          type="time"
+                          value={newJob.scheduledTime || ''}
+                          onChange={e => setNewJob({ ...newJob, scheduledTime: e.target.value || null })}
+                          className="w-full px-4 py-2 border rounded-lg"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
                         <input
                           type="number"
@@ -4087,6 +4307,21 @@ Best regards,
                           onChange={e => setNewJob({ ...newJob, price: parseInt(e.target.value) || 0 })}
                           className="w-full px-4 py-2 border rounded-lg"
                         />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Assign To <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <select
+                          value={newJob.employeeId || ''}
+                          onChange={e => setNewJob({ ...newJob, employeeId: e.target.value ? parseInt(e.target.value) : null })}
+                          className="w-full px-4 py-2 border rounded-lg"
+                        >
+                          <option value="">Unassigned</option>
+                          {employees.map(emp => (
+                            <option key={emp.id} value={emp.id}>{emp.name}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     <div>
@@ -6482,6 +6717,128 @@ Best regards,
         </div>
       )}
 
+      {/* Employee Manager Modal */}
+      {showEmployeeManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-indigo-700">👥 Manage Employees</h3>
+              <button onClick={() => setShowEmployeeManager(false)} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+
+            {/* Add New Employee */}
+            <div className="bg-indigo-50 p-4 rounded-lg mb-4">
+              <h4 className="font-medium text-indigo-800 mb-3">Add New Employee</h4>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Employee Name"
+                  value={newEmployee.name}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="tel"
+                    placeholder="Phone (optional)"
+                    value={newEmployee.phone}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
+                    className="px-3 py-2 border rounded-lg"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email (optional)"
+                    value={newEmployee.email}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                    className="px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (newEmployee.name.trim()) {
+                      const colorIndex = employees.length % employeeColors.length;
+                      saveEmployees([...employees, { 
+                        ...newEmployee, 
+                        id: Date.now(),
+                        colorIndex
+                      }]);
+                      setNewEmployee({ name: '', phone: '', email: '' });
+                    }
+                  }}
+                  disabled={!newEmployee.name.trim()}
+                  className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300"
+                >
+                  Add Employee
+                </button>
+              </div>
+            </div>
+
+            {/* Employee List */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-gray-700">Current Employees ({employees.length})</h4>
+              {employees.length > 0 ? (
+                employees.map((emp, idx) => {
+                  const color = employeeColors[idx % employeeColors.length];
+                  const assignedRecurring = recurringServices.filter(r => r.employeeId === emp.id && r.active).length;
+                  const assignedJobs = oneTimeJobs.filter(j => j.employeeId === emp.id).length;
+                  
+                  return (
+                    <div key={emp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                          style={{ backgroundColor: color.bg }}
+                        >
+                          {emp.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-medium">{emp.name}</div>
+                          <div className="text-xs text-gray-500">
+                            {emp.phone && <span className="mr-2">{emp.phone}</span>}
+                            {emp.email && <span>{emp.email}</span>}
+                          </div>
+                          <div className="text-xs text-indigo-600">
+                            {assignedRecurring} recurring • {assignedJobs} jobs
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove ${emp.name}? Their assignments will become unassigned.`)) {
+                            // Remove employee and clear their assignments
+                            saveEmployees(employees.filter(e => e.id !== emp.id));
+                            saveRecurring(recurringServices.map(r => 
+                              r.employeeId === emp.id ? { ...r, employeeId: null } : r
+                            ));
+                            saveJobs(oneTimeJobs.map(j => 
+                              j.employeeId === emp.id ? { ...j, employeeId: null } : j
+                            ));
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 p-2"
+                      >
+                        <Icons.Trash />
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-gray-500 text-center py-4">No employees yet. Add your first employee above!</p>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowEmployeeManager(false)}
+              className="w-full mt-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Schedule Quote as Job Modal */}
       {showScheduleQuoteJob && quoteToSchedule && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -7001,11 +7358,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.1.0
+        v2.2.0
       </div>
     </div>
   );
 }
+
 
 
 
