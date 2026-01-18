@@ -2681,7 +2681,10 @@ Best regards,
                     <div key={job.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div>
                         <div className="font-bold">{job.customerName}</div>
-                        <div className="text-sm text-gray-500">{job.jobType} • {new Date(job.date).toLocaleDateString()}</div>
+                        <div className="text-sm text-gray-500">{job.jobType} • {(() => {
+                          const [y, m, d] = job.date.split('-').map(Number);
+                          return new Date(y, m - 1, d).toLocaleDateString();
+                        })()}</div>
                       </div>
                       <div className="font-bold text-green-600">${job.price}</div>
                     </div>
@@ -4113,7 +4116,10 @@ Best regards,
                     <div>
                       <div className="font-bold text-gray-800">{job.customerName}</div>
                       <div className="text-sm text-gray-500">
-                        {job.jobType} • {new Date(job.date).toLocaleDateString()}
+                        {job.jobType} • {(() => {
+                          const [y, m, d] = job.date.split('-').map(Number);
+                          return new Date(y, m - 1, d).toLocaleDateString();
+                        })()}
                       </div>
                       {job.notes && <div className="text-sm text-gray-600 italic mt-1">{job.notes}</div>}
                     </div>
@@ -6995,11 +7001,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.9
+        v2.1.0
       </div>
     </div>
   );
 }
+
 
 
 
