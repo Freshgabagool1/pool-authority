@@ -154,6 +154,14 @@ export default function PoolAuthority() {
   const [jobCompletionNotes, setJobCompletionNotes] = useState('');
   const [sendJobEmailOnComplete, setSendJobEmailOnComplete] = useState(true);
   
+  // Search state for billing and history
+  const [billingSearch, setBillingSearch] = useState('');
+  const [billingDateFilter, setBillingDateFilter] = useState('');
+  const [jobsSearch, setJobsSearch] = useState('');
+  const [jobsDateFilter, setJobsDateFilter] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDateFilter, setHistoryDateFilter] = useState('');
+  
   // Email state
   const [emailLog, setEmailLog] = useState([]);
   const [billedCustomers, setBilledCustomers] = useState({}); // Track customers billed this month: { 'customerId-YYYY-MM': true }
@@ -5402,9 +5410,20 @@ Best regards,
 
             {/* Monthly Invoices Section */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
                 <h2 className="text-xl font-bold text-gray-800">Monthly Service Invoices</h2>
-                <div className="flex gap-3 items-center">
+                <div className="flex gap-3 items-center flex-wrap">
+                  {/* Search */}
+                  <div>
+                    <label className="text-xs text-gray-500 block">Search Customer</label>
+                    <input
+                      type="text"
+                      placeholder="🔍 Customer name..."
+                      value={billingSearch}
+                      onChange={e => setBillingSearch(e.target.value)}
+                      className="px-3 py-2 border rounded-lg text-sm w-40"
+                    />
+                  </div>
                   <div>
                     <label className="text-xs text-gray-500 block">Payment Terms</label>
                     <select
@@ -5469,7 +5488,9 @@ Best regards,
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {customers.map(customer => {
+                  {customers
+                    .filter(customer => !billingSearch || customer.name.toLowerCase().includes(billingSearch.toLowerCase()))
+                    .map(customer => {
                     const services = getMonthServices(customer.id, invoiceMonth);
                     const serviceTotal = services.reduce((sum, s) => sum + s.weeklyRate, 0);
                     const chemicalTotal = services.reduce((sum, s) => sum + (s.chemicalCost || 0), 0);
@@ -5909,10 +5930,40 @@ Best regards,
 
             {/* Completed Jobs / Service Calls - Table format matching monthly invoices */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
                 <h3 className="text-xl font-bold text-gray-800">Completed Jobs / Service Calls</h3>
-                <div className="text-sm text-gray-500">
-                  Showing: {new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                <div className="flex gap-3 items-center flex-wrap">
+                  {/* Search */}
+                  <div>
+                    <label className="text-xs text-gray-500 block">Search Customer</label>
+                    <input
+                      type="text"
+                      placeholder="🔍 Customer name..."
+                      value={jobsSearch}
+                      onChange={e => setJobsSearch(e.target.value)}
+                      className="px-3 py-2 border rounded-lg text-sm w-40"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block">Filter Date</label>
+                    <input
+                      type="date"
+                      value={jobsDateFilter}
+                      onChange={e => setJobsDateFilter(e.target.value)}
+                      className="px-3 py-2 border rounded-lg text-sm"
+                    />
+                  </div>
+                  {jobsDateFilter && (
+                    <button
+                      onClick={() => setJobsDateFilter('')}
+                      className="text-xs text-blue-600 hover:underline mt-4"
+                    >
+                      Clear Date
+                    </button>
+                  )}
+                  <div className="text-sm text-gray-500 mt-4">
+                    Showing: {new Date(invoiceMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </div>
                 </div>
               </div>
               
@@ -5929,8 +5980,14 @@ Best regards,
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {getAllMonthJobServices(invoiceMonth).length > 0 ? (
-                    getAllMonthJobServices(invoiceMonth).map(s => {
+                  {getAllMonthJobServices(invoiceMonth)
+                    .filter(s => !jobsSearch || s.customerName.toLowerCase().includes(jobsSearch.toLowerCase()))
+                    .filter(s => !jobsDateFilter || s.date === jobsDateFilter)
+                    .length > 0 ? (
+                    getAllMonthJobServices(invoiceMonth)
+                      .filter(s => !jobsSearch || s.customerName.toLowerCase().includes(jobsSearch.toLowerCase()))
+                      .filter(s => !jobsDateFilter || s.date === jobsDateFilter)
+                      .map(s => {
                       const customer = customers.find(c => c.id === s.customerId);
                       const jobInvoiceKey = `job-${s.id}`;
                       const isJobPaid = paidInvoices[jobInvoiceKey]?.paid;
@@ -6044,7 +6101,7 @@ Best regards,
                   ) : (
                     <tr>
                       <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
-                        No completed jobs for this month
+                        {jobsSearch || jobsDateFilter ? 'No jobs match your search' : 'No completed jobs for this month'}
                       </td>
                     </tr>
                   )}
@@ -6057,16 +6114,55 @@ Best regards,
         {/* HISTORY TAB */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-3">
               <h2 className="text-xl font-bold text-gray-800">Service History</h2>
-              <div className="text-lg font-bold text-green-600">
-                Total: ${totalRevenue.toFixed(2)}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Search */}
+                <div>
+                  <label className="text-xs text-gray-500 block">Search Customer</label>
+                  <input
+                    type="text"
+                    placeholder="🔍 Customer name..."
+                    value={historySearch}
+                    onChange={e => setHistorySearch(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm w-40"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block">Filter Date</label>
+                  <input
+                    type="date"
+                    value={historyDateFilter}
+                    onChange={e => setHistoryDateFilter(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                {(historySearch || historyDateFilter) && (
+                  <button
+                    onClick={() => { setHistorySearch(''); setHistoryDateFilter(''); }}
+                    className="text-xs text-blue-600 hover:underline mt-4"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+                <div className="text-lg font-bold text-green-600 mt-4">
+                  Total: ${serviceHistory
+                    .filter(s => !historySearch || s.customerName.toLowerCase().includes(historySearch.toLowerCase()))
+                    .filter(s => !historyDateFilter || s.date === historyDateFilter)
+                    .reduce((sum, s) => sum + s.totalAmount, 0).toFixed(2)}
+                </div>
               </div>
             </div>
 
-            {serviceHistory.length > 0 ? (
+            {serviceHistory
+              .filter(s => !historySearch || s.customerName.toLowerCase().includes(historySearch.toLowerCase()))
+              .filter(s => !historyDateFilter || s.date === historyDateFilter)
+              .length > 0 ? (
               <div className="space-y-3">
-                {serviceHistory.map(service => (
+                {serviceHistory
+                  .filter(s => !historySearch || s.customerName.toLowerCase().includes(historySearch.toLowerCase()))
+                  .filter(s => !historyDateFilter || s.date === historyDateFilter)
+                  .map(service => (
                   <div key={service.id} className="bg-white rounded-xl p-4 shadow-lg border-l-4 border-green-500">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -6132,8 +6228,12 @@ Best regards,
             ) : (
               <div className="bg-white rounded-xl p-12 shadow-lg text-center">
                 <div className="text-6xl mb-4">📋</div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">No service history</h3>
-                <p className="text-gray-500">Complete services to see them here.</p>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  {historySearch || historyDateFilter ? 'No matching services' : 'No service history'}
+                </h3>
+                <p className="text-gray-500">
+                  {historySearch || historyDateFilter ? 'Try adjusting your search filters.' : 'Complete services to see them here.'}
+                </p>
               </div>
             )}
           </div>
@@ -7358,11 +7458,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.2.0
+        v2.3.0
       </div>
     </div>
   );
 }
+
 
 
 
