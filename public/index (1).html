@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <meta name="description" content="Pool Authority - Professional Pool Service Management" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pool Authority" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Pool Authority" />
+    <meta name="msapplication-TileColor" content="#1e3a5f" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- Icons -->
+    <link rel="icon" href="icon-192.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon-192.svg">
+    <link rel="manifest" href="/manifest.json" />
+    
+    <title>Pool Authority</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PWA Install Styles -->
+    <style>
+      /* Safe area padding for notched phones */
+      body {
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      
+      /* Prevent pull-to-refresh on mobile */
+      body {
+        overscroll-behavior-y: contain;
+      }
+      
+      /* Smooth scrolling */
+      html {
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* PWA Install Banner */
+      .pwa-install-banner {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+        color: white;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 9999;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+      }
+      
+      .pwa-install-banner.show {
+        transform: translateY(0);
+      }
+      
+      /* Offline indicator */
+      .offline-indicator {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #f59e0b;
+        color: white;
+        text-align: center;
+        padding: 8px;
+        font-size: 14px;
+        z-index: 9999;
+        display: none;
+      }
+      
+      .offline-indicator.show {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Offline Indicator -->
+    <div id="offline-indicator" class="offline-indicator">
+      📶 You're offline - Changes will sync when connected
+    </div>
+    
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    
+    <!-- PWA Install Banner (for Android/Desktop) -->
+    <div id="pwa-install-banner" class="pwa-install-banner">
+      <div>
+        <div style="font-weight: bold; font-size: 16px;">📱 Install Pool Authority</div>
+        <div style="font-size: 13px; opacity: 0.9;">Add to home screen for the best experience</div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button onclick="dismissInstallBanner()" style="padding: 8px 16px; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; color: white; cursor: pointer;">
+          Later
+        </button>
+        <button onclick="installPWA()" style="padding: 8px 16px; background: white; border: none; border-radius: 8px; color: #1e3a5f; font-weight: bold; cursor: pointer;">
+          Install
+        </button>
+      </div>
+    </div>
+    
+    <script>
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('ServiceWorker registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('ServiceWorker registration failed:', error);
+            });
+        });
+      }
+      
+      // Offline detection
+      function updateOnlineStatus() {
+        const indicator = document.getElementById('offline-indicator');
+        if (!navigator.onLine) {
+          indicator.classList.add('show');
+        } else {
+          indicator.classList.remove('show');
+        }
+      }
+      
+      window.addEventListener('online', updateOnlineStatus);
+      window.addEventListener('offline', updateOnlineStatus);
+      updateOnlineStatus();
+      
+      // PWA Install prompt
+      let deferredPrompt;
+      const installBanner = document.getElementById('pwa-install-banner');
+      
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        // Check if already dismissed
+        if (!localStorage.getItem('pwa-install-dismissed')) {
+          setTimeout(() => {
+            installBanner.classList.add('show');
+          }, 3000);
+        }
+      });
+      
+      function installPWA() {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+              console.log('PWA installed');
+            }
+            deferredPrompt = null;
+            installBanner.classList.remove('show');
+          });
+        }
+      }
+      
+      function dismissInstallBanner() {
+        installBanner.classList.remove('show');
+        localStorage.setItem('pwa-install-dismissed', 'true');
+      }
+      
+      // Hide banner if already installed
+      window.addEventListener('appinstalled', () => {
+        installBanner.classList.remove('show');
+        console.log('PWA was installed');
+      });
+      
+      // iOS install instructions (Safari doesn't support beforeinstallprompt)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      
+      if (isIOS && !isInStandaloneMode && !localStorage.getItem('ios-install-dismissed')) {
+        // Show iOS-specific install instructions after 5 seconds
+        setTimeout(() => {
+          const iosBanner = document.createElement('div');
+          iosBanner.className = 'pwa-install-banner show';
+          iosBanner.innerHTML = `
+            <div>
+              <div style="font-weight: bold; font-size: 16px;">📱 Install Pool Authority</div>
+              <div style="font-size: 13px; opacity: 0.9;">Tap <span style="font-size: 18px;">⬆️</span> then "Add to Home Screen"</div>
+            </div>
+            <button onclick="this.parentElement.remove(); localStorage.setItem('ios-install-dismissed', 'true');" style="padding: 8px 16px; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; color: white; cursor: pointer;">
+              Got it
+            </button>
+          `;
+          document.body.appendChild(iosBanner);
+        }, 5000);
+      }
+    </script>
+  </body>
+</html>
