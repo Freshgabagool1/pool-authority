@@ -102,8 +102,20 @@ export default function PoolAuthority() {
   const [chemicalInventory, setChemicalInventory] = useState([]);
   const [oneTimeJobs, setOneTimeJobs] = useState([]);
   const [invoices, setInvoices] = useState([]);
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('routes'); // Default to routes for tech mode
   const [showMobileMenu, setShowMobileMenu] = useState(false); // Mobile navigation menu
+  
+  // Admin PIN & Mode State
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminPIN, setAdminPIN] = useState('');
+  const [showPINSetup, setShowPINSetup] = useState(false);
+  const [showPINEntry, setShowPINEntry] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [confirmPIN, setConfirmPIN] = useState('');
+  const [adminTimeout, setAdminTimeout] = useState(15); // Minutes until auto-lock
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showAddChemical, setShowAddChemical] = useState(false);
   const [showAddJob, setShowAddJob] = useState(false);
@@ -348,9 +360,51 @@ Best regards,
             }
           }
         }
+        
+        // Load admin PIN settings
+        const savedPIN = localStorage.getItem('pool-admin-pin');
+        if (savedPIN) {
+          setAdminPIN(savedPIN);
+        } else {
+          // No PIN set - show setup on first visit
+          setShowPINSetup(true);
+        }
+        
+        const savedTimeout = localStorage.getItem('pool-admin-timeout');
+        if (savedTimeout) {
+          setAdminTimeout(parseInt(savedTimeout));
+        }
       } catch (e) { console.log('No existing data'); }
     };
     loadData();
+  }, []);
+
+  // Auto-lock admin mode after timeout
+  useEffect(() => {
+    if (!isAdminMode) return;
+    
+    const checkTimeout = setInterval(() => {
+      const elapsed = (Date.now() - lastActivity) / 1000 / 60; // minutes
+      if (elapsed >= adminTimeout) {
+        setIsAdminMode(false);
+        setActiveTab('routes');
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(checkTimeout);
+  }, [isAdminMode, lastActivity, adminTimeout]);
+
+  // Track activity to reset timeout
+  useEffect(() => {
+    const resetActivity = () => setLastActivity(Date.now());
+    window.addEventListener('click', resetActivity);
+    window.addEventListener('keypress', resetActivity);
+    window.addEventListener('touchstart', resetActivity);
+    return () => {
+      window.removeEventListener('click', resetActivity);
+      window.removeEventListener('keypress', resetActivity);
+      window.removeEventListener('touchstart', resetActivity);
+    };
   }, []);
 
   // Save helpers
@@ -358,6 +412,16 @@ Best regards,
     setter(data);
     try { localStorage.setItem(key, JSON.stringify(data)); } 
     catch (e) { console.error('Save error:', e); }
+  };
+
+  const saveAdminPIN = (pin) => {
+    setAdminPIN(pin);
+    localStorage.setItem('pool-admin-pin', pin);
+  };
+
+  const saveAdminTimeout = (minutes) => {
+    setAdminTimeout(minutes);
+    localStorage.setItem('pool-admin-timeout', minutes.toString());
   };
 
   const saveCustomers = (data) => saveData('pool-customers', data, setCustomers);
@@ -2519,23 +2583,176 @@ Best regards,
   const todayServices = serviceHistory.filter(s => s.date.startsWith(selectedDate)).length;
 
   // Tab config
-  const tabs = [
-    { key: 'home', label: 'Home', icon: Icons.Home },
-    { key: 'calendar', label: 'Calendar', icon: Icons.Calendar },
-    { key: 'routes', label: 'Routes', icon: Icons.Map },
-    { key: 'customers', label: 'Customers', icon: Icons.Users },
-    { key: 'recurring', label: 'Recurring', icon: Icons.History },
-    { key: 'jobs', label: 'Jobs', icon: Icons.Wrench },
-    { key: 'quotes', label: 'Quotes', icon: Icons.FileText },
-    { key: 'billing', label: 'Billing', icon: Icons.Receipt },
-    { key: 'payments', label: 'Payments', icon: Icons.CreditCard },
-    { key: 'chemicals', label: 'Chemicals', icon: Icons.Beaker },
-    { key: 'history', label: 'History', icon: Icons.DollarSign },
-    { key: 'settings', label: 'Settings', icon: Icons.Settings },
+  // All tabs with admin-only flag
+  const allTabs = [
+    { key: 'home', label: 'Home', icon: Icons.Home, adminOnly: true },
+    { key: 'calendar', label: 'Calendar', icon: Icons.Calendar, adminOnly: false },
+    { key: 'routes', label: 'Routes', icon: Icons.Map, adminOnly: false },
+    { key: 'customers', label: 'Customers', icon: Icons.Users, adminOnly: true },
+    { key: 'recurring', label: 'Recurring', icon: Icons.History, adminOnly: true },
+    { key: 'jobs', label: 'Jobs', icon: Icons.Wrench, adminOnly: true },
+    { key: 'quotes', label: 'Quotes', icon: Icons.FileText, adminOnly: true },
+    { key: 'billing', label: 'Billing', icon: Icons.Receipt, adminOnly: true },
+    { key: 'payments', label: 'Payments', icon: Icons.CreditCard, adminOnly: true },
+    { key: 'chemicals', label: 'Chemicals', icon: Icons.Beaker, adminOnly: false },
+    { key: 'history', label: 'History', icon: Icons.DollarSign, adminOnly: true },
+    { key: 'settings', label: 'Settings', icon: Icons.Settings, adminOnly: true },
   ];
+
+  // Filter tabs based on mode
+  const tabs = isAdminMode ? allTabs : allTabs.filter(t => !t.adminOnly);
+
+  // Tech mode tabs for mobile bottom nav
+  const techMobileTabs = [
+    { key: 'routes', label: 'Routes', icon: Icons.Map },
+    { key: 'calendar', label: 'Calendar', icon: Icons.Calendar },
+    { key: 'chemicals', label: 'Chemicals', icon: Icons.Beaker },
+  ];
+
+  // Verify PIN
+  const verifyPIN = () => {
+    if (pinInput === adminPIN) {
+      setIsAdminMode(true);
+      setShowPINEntry(false);
+      setPinInput('');
+      setPinError('');
+      setLastActivity(Date.now());
+      setActiveTab('home');
+    } else {
+      setPinError('Incorrect PIN');
+      setPinInput('');
+    }
+  };
+
+  // Setup new PIN
+  const setupPIN = () => {
+    if (pinInput.length !== 4 || !/^\d+$/.test(pinInput)) {
+      setPinError('PIN must be 4 digits');
+      return;
+    }
+    if (confirmPIN !== pinInput) {
+      setPinError('PINs do not match');
+      return;
+    }
+    saveAdminPIN(pinInput);
+    setShowPINSetup(false);
+    setIsAdminMode(true);
+    setActiveTab('home');
+    setPinInput('');
+    setConfirmPIN('');
+    setPinError('');
+  };
+
+  // Lock to tech mode
+  const lockToTechMode = () => {
+    setIsAdminMode(false);
+    setActiveTab('routes');
+  };
 
   return (
     <div className="min-h-screen pb-20 md:pb-8" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
+      
+      {/* PIN Setup Modal (First Time) */}
+      {showPINSetup && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center">
+            <div className="text-5xl mb-4">🔐</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Set Up Admin PIN</h2>
+            <p className="text-gray-600 mb-6">Create a 4-digit PIN to protect admin features from employees.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Create PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength="4"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border-2 rounded-xl focus:border-blue-500 focus:outline-none"
+                  placeholder="••••"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength="4"
+                  value={confirmPIN}
+                  onChange={(e) => setConfirmPIN(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border-2 rounded-xl focus:border-blue-500 focus:outline-none"
+                  placeholder="••••"
+                />
+              </div>
+              
+              {pinError && <p className="text-red-500 text-sm">{pinError}</p>}
+              
+              <button
+                onClick={setupPIN}
+                disabled={pinInput.length !== 4 || confirmPIN.length !== 4}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Set PIN & Continue
+              </button>
+              
+              <button
+                onClick={() => {
+                  saveAdminPIN('0000');
+                  setShowPINSetup(false);
+                  setIsAdminMode(true);
+                }}
+                className="w-full py-2 text-gray-500 text-sm hover:text-gray-700"
+              >
+                Skip for now (PIN will be 0000)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Entry Modal */}
+      {showPINEntry && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center">
+            <div className="text-5xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Admin Access</h2>
+            <p className="text-gray-600 mb-6">Enter your PIN to access admin features.</p>
+            
+            <div className="space-y-4">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength="4"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onKeyDown={(e) => e.key === 'Enter' && pinInput.length === 4 && verifyPIN()}
+                className="w-full px-4 py-3 text-center text-2xl tracking-widest border-2 rounded-xl focus:border-blue-500 focus:outline-none"
+                placeholder="••••"
+                autoFocus
+              />
+              
+              {pinError && <p className="text-red-500 text-sm">{pinError}</p>}
+              
+              <button
+                onClick={verifyPIN}
+                disabled={pinInput.length !== 4}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                Unlock
+              </button>
+              
+              <button
+                onClick={() => { setShowPINEntry(false); setPinInput(''); setPinError(''); }}
+                className="w-full py-2 text-gray-500 text-sm hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Email Notification Popup */}
       {emailNotification && (
         <div className={`fixed top-4 left-4 right-4 md:left-auto md:right-4 md:w-auto z-50 p-4 rounded-lg shadow-lg flex items-center gap-3 animate-pulse ${
@@ -2566,7 +2783,34 @@ Best regards,
             </h1>
             <p className="text-xs md:text-sm text-gray-500 hidden sm:block">Professional Pool Service Management</p>
           </div>
-          <span className="text-xs text-gray-400 hidden md:block">v2.4.0</span>
+          
+          {/* Admin/Tech Mode Indicator & Controls */}
+          <div className="flex items-center gap-2">
+            {isAdminMode ? (
+              <>
+                <span className="hidden md:inline-block text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">
+                  🔓 Admin Mode
+                </span>
+                <button
+                  onClick={lockToTechMode}
+                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  title="Lock to Tech Mode"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowPINEntry(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-all"
+                title="Admin Login"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
+            <span className="text-xs text-gray-400 hidden md:block">v2.5.0</span>
+          </div>
         </div>
       </div>
 
@@ -2594,13 +2838,30 @@ Best regards,
       {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50 safe-area-bottom">
         <div className="flex justify-around items-center py-2 px-1">
-          {[
+          {(isAdminMode ? [
             { key: 'home', label: 'Home', icon: Icons.Home },
             { key: 'routes', label: 'Routes', icon: Icons.Map },
             { key: 'customers', label: 'Customers', icon: Icons.Users },
             { key: 'jobs', label: 'Jobs', icon: Icons.Wrench },
             { key: 'more', label: 'More', icon: Icons.Menu },
-          ].map(({ key, label, icon: Icon }) => (
+          ] : [
+            { key: 'routes', label: 'Routes', icon: Icons.Map },
+            { key: 'calendar', label: 'Calendar', icon: Icons.Calendar },
+            { key: 'chemicals', label: 'Chemicals', icon: Icons.Beaker },
+            { key: 'admin', label: 'Admin', icon: Icons.Settings },
+          ]).map(({ key, label, icon: Icon }) => (
+            key === 'admin' ? (
+              <button
+                key={key}
+                onClick={() => setShowPINEntry(true)}
+                className="flex flex-col items-center px-3 py-1 rounded-lg text-gray-600"
+              >
+                <div className="p-1.5 rounded-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <span className="text-xs mt-1 font-medium">{label}</span>
+              </button>
+            ) :
             key === 'more' ? (
               <div key={key} className="relative">
                 <button
@@ -3043,9 +3304,105 @@ Best regards,
 
         {/* ROUTES TAB */}
         {activeTab === 'routes' && (
-          <div className="space-y-6">
-            {/* Date Navigation & Employee Filter */}
-            <div className="bg-white rounded-xl p-4 shadow-lg">
+          <div className="space-y-4 md:space-y-6">
+            
+            {/* MOBILE: Sticky Header with Date Nav */}
+            <div className="md:hidden">
+              <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white p-4 rounded-xl shadow-lg">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => changeRouteDate(-1)}
+                    className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-full active:bg-white/30"
+                  >
+                    <Icons.ChevronLeft />
+                  </button>
+                  <div className="text-center">
+                    <div className="text-2xl font-black">{formatRouteDate(routeDate)}</div>
+                    <div className="text-sm opacity-90">
+                      {(() => {
+                        const [y, m, d] = routeDate.split('-').map(Number);
+                        return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                      })()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => changeRouteDate(1)}
+                    className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-full active:bg-white/30"
+                  >
+                    <Icons.ChevronRight />
+                  </button>
+                </div>
+                
+                {/* Quick Stats */}
+                <div className="flex justify-around mt-4 pt-3 border-t border-white/20">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{routeCustomers.length}</div>
+                    <div className="text-xs opacity-75">Stops</div>
+                  </div>
+                  {isAdminMode && (
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">${routeCustomers.reduce((sum, c) => sum + (c.isOneTimeJob ? c.jobPrice : c.weeklyRate), 0)}</div>
+                      <div className="text-xs opacity-75">Est. Total</div>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{routeCustomers.filter(c => c.recurringId).length}</div>
+                    <div className="text-xs opacity-75">Recurring</div>
+                  </div>
+                </div>
+                
+                {routeDate !== getLocalDateString() && (
+                  <button
+                    onClick={() => setRouteDate(getLocalDateString())}
+                    className="w-full mt-3 py-2 bg-white/20 rounded-lg text-sm font-medium"
+                  >
+                    Jump to Today
+                  </button>
+                )}
+              </div>
+              
+              {/* Employee Filter Pills - Mobile */}
+              <div className="flex gap-2 overflow-x-auto py-3 px-1 -mx-1">
+                <button
+                  onClick={() => setSelectedRouteEmployee('all')}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
+                    selectedRouteEmployee === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setSelectedRouteEmployee('')}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
+                    selectedRouteEmployee === '' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+                  }`}
+                >
+                  Unassigned
+                </button>
+                {employees.map(emp => (
+                  <button
+                    key={emp.id}
+                    onClick={() => setSelectedRouteEmployee(emp.id)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
+                      selectedRouteEmployee === emp.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+                    }`}
+                  >
+                    {emp.name}
+                  </button>
+                ))}
+                {isAdminMode && (
+                  <button
+                    onClick={() => setShowEmployeeManager(true)}
+                    className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 text-gray-600 flex items-center gap-1"
+                  >
+                    <Icons.Plus /> Add
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* DESKTOP: Original Header */}
+            <div className="hidden md:block bg-white rounded-xl p-4 shadow-lg">
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => changeRouteDate(-1)}
@@ -3102,13 +3459,15 @@ Best regards,
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowEmployeeManager(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-all"
-                >
-                  <Icons.Users />
-                  Manage Employees
-                </button>
+                {isAdminMode && (
+                  <button
+                    onClick={() => setShowEmployeeManager(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-all"
+                  >
+                    <Icons.Users />
+                    Manage Employees
+                  </button>
+                )}
               </div>
 
               {routeDate !== getLocalDateString() && (
@@ -3123,6 +3482,8 @@ Best regards,
               )}
             </div>
 
+            {/* Admin-only: Customer Selection Grid */}
+            {isAdminMode && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Customer Selection */}
               <div className="bg-white rounded-xl p-6 shadow-lg">
@@ -3137,6 +3498,27 @@ Best regards,
                         <input
                           type="checkbox"
                           checked={isInRoute}
+                          onChange={() => toggleRouteCustomer(customer)}
+                          className="w-5 h-5 rounded"
+                          disabled={isScheduled}
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium flex items-center gap-2">
+                            {customer.name}
+                            {isScheduled && (
+                              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded">
+                                {routeCustomers.find(c => c.id === customer.id)?.isOneTimeJob ? 'Job Scheduled' : 'Recurring'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">{customer.address}</div>
+                        </div>
+                        <div className="text-green-600 font-bold">${customer.weeklyRate}</div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
                           onChange={() => toggleRouteCustomer(customer)}
                           className="w-5 h-5 rounded"
                           disabled={isScheduled}
@@ -3272,7 +3654,7 @@ Best regards,
                               )}
                             </div>
                           </div>
-                          <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>
+                          {isAdminMode && <div className="font-bold text-green-600">${customer.isOneTimeJob ? customer.jobPrice : customer.weeklyRate}</div>}
                           {customer.isOneTimeJob ? (
                             <button
                               type="button"
@@ -3320,6 +3702,7 @@ Best regards,
                         </div>
                       );
                     })}
+                    {isAdminMode && (
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
                       <div className="flex justify-between items-center">
                         <div className="text-lg font-bold text-gray-800">
@@ -3330,6 +3713,7 @@ Best regards,
                         </div>
                       </div>
                     </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8">
@@ -3338,7 +3722,107 @@ Best regards,
                   </div>
                 )}
               </div>
-            </div>
+            {isAdminMode && </div>}
+            {!isAdminMode && (
+              /* Tech Mode: Simple Route List */
+              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div className="p-4 border-b flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-800">Today's Stops</h2>
+                    <p className="text-sm text-gray-500">{routeCustomers.length} customers</p>
+                  </div>
+                  {routeCustomers.length > 0 && (
+                    <a
+                      href={getGoogleMapsRouteUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg"
+                    >
+                      <Icons.Navigation />
+                      Start Route
+                    </a>
+                  )}
+                </div>
+                
+                {routeCustomers.length > 0 ? (
+                  <div className="divide-y">
+                    {routeCustomers.map((customer, idx) => (
+                      <div key={`${customer.id}-${idx}`} className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0" style={{ background: customer.isOneTimeJob ? '#7c3aed' : '#1e3a5f' }}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-gray-800">{customer.name}</div>
+                            <div className="text-sm text-gray-500">{customer.address}</div>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {customer.scheduledTime && (
+                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-bold">
+                                  🕐 {customer.scheduledTime}
+                                </span>
+                              )}
+                              {customer.gateCode && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                  🔑 {customer.gateCode}
+                                </span>
+                              )}
+                              {customer.dogName && (
+                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                                  🐕 {customer.dogName}
+                                </span>
+                              )}
+                              {customer.isOneTimeJob && (
+                                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                                  🔧 {customer.jobType}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3 ml-13">
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customer.address)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-center text-sm font-medium"
+                          >
+                            📍 Navigate
+                          </a>
+                          {customer.isOneTimeJob ? (
+                            <button
+                              onClick={() => {
+                                const job = customer.jobData || oneTimeJobs.find(j => j.id === customer.jobId);
+                                if (job) {
+                                  setJobToComplete(job);
+                                  setJobCompletionItems([]);
+                                  setJobChemicals([]);
+                                  setJobCompletionNotes('');
+                                  setShowCompleteJobModal(true);
+                                }
+                              }}
+                              className="flex-1 py-2 bg-purple-600 text-white rounded-lg text-center text-sm font-medium"
+                            >
+                              ✓ Complete Job
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => completeService(customer)}
+                              className="flex-1 py-2 bg-green-600 text-white rounded-lg text-center text-sm font-medium"
+                            >
+                              ✓ Complete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-gray-500">
+                    <p>No stops scheduled for today</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -6320,6 +6804,75 @@ Best regards,
         {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
+            
+            {/* Admin PIN Settings */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">🔐 Admin PIN Settings</h2>
+              <p className="text-sm text-gray-500 mb-4">Manage access control for employees.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Change Admin PIN</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength="4"
+                      placeholder="New 4-digit PIN"
+                      id="newPinInput"
+                      className="flex-1 px-4 py-2 border rounded-lg text-center tracking-widest"
+                    />
+                    <button
+                      onClick={() => {
+                        const newPin = document.getElementById('newPinInput').value;
+                        if (newPin.length === 4 && /^\d+$/.test(newPin)) {
+                          saveAdminPIN(newPin);
+                          document.getElementById('newPinInput').value = '';
+                          showEmailNotification('success', 'Admin PIN updated');
+                        } else {
+                          showEmailNotification('error', 'PIN must be 4 digits');
+                        }
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Update PIN
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Current PIN is set (hidden for security)</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Auto-Lock Timeout</label>
+                  <select
+                    value={adminTimeout}
+                    onChange={(e) => saveAdminTimeout(parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  >
+                    <option value="5">5 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="480">8 hours (work day)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">App will lock to Tech Mode after this time of inactivity</p>
+                </div>
+              </div>
+              
+              <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <h3 className="font-medium text-amber-800 mb-2">📱 What Employees See (Tech Mode):</h3>
+                <ul className="text-sm text-amber-700 space-y-1">
+                  <li>✓ Today's route with customer names & addresses</li>
+                  <li>✓ Gate codes and dog warnings</li>
+                  <li>✓ Appointment times</li>
+                  <li>✓ Complete service buttons</li>
+                  <li>✓ Chemical inventory</li>
+                  <li>✗ Prices, revenue, billing info hidden</li>
+                  <li>✗ Customer phone/email hidden</li>
+                  <li>✗ Cannot add/edit customers or jobs</li>
+                </ul>
+              </div>
+            </div>
+
             {/* Company Profile Section */}
             <div className="bg-white rounded-xl p-6 shadow-lg">
               <h2 className="text-xl font-bold text-gray-800 mb-4">🏢 Company Profile</h2>
