@@ -1128,21 +1128,13 @@ Best regards,
   </div>
 </body></html>`;
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `PoolAuthority-Quote-${customer.name.replace(/\s+/g, '-')}-${quoteNumber}.html`;
-    a.click();
-
-    // Email
-    if (customer.email) {
-      const subject = `Quote ${quoteNumber} from Pool Authority`;
-      const body = `Hi ${customer.name},\n\nThank you for your interest! Please find attached your quote ${quoteNumber}.\n\nSummary:\n${currentQuote.items.map(i => `- ${i.description}: $${(i.quantity * i.price).toFixed(2)}`).join('\n')}\n\nTotal: $${total.toFixed(2)}\n\nThis quote is valid until ${validUntil.toLocaleDateString()}.\n\nTo approve this quote, simply reply to this email or give us a call!\n\nPool Authority`;
-      window.open(`mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-    }
+    // Store the HTML in the quote for later PDF download (don't auto-download)
+    quote.pdfHtml = html;
+    saveQuotes([quote, ...quotes]);
 
     setCurrentQuote({ customerId: '', items: [], notes: '', validDays: 30 });
     setShowCreateQuote(false);
+    showEmailNotification('success', `Quote ${quoteNumber} created! Use PDF or Email buttons to send to customer.`);
   };
 
   // Stripe Payment Functions
@@ -7003,11 +6995,12 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.0.8
+        v2.0.9
       </div>
     </div>
   );
 }
+
 
 
 
