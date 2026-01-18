@@ -3519,32 +3519,6 @@ Best regards,
                   })}
                 </div>
               </div>
-                          onChange={() => toggleRouteCustomer(customer)}
-                          className="w-5 h-5 rounded"
-                          disabled={isScheduled}
-                        />
-                        <div className="flex-1">
-                          <div className="font-medium flex items-center gap-2">
-                            {customer.name}
-                            {isScheduled && (
-                              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded">
-                                {routeCustomers.find(c => c.id === customer.id)?.isOneTimeJob ? 'Job Scheduled' : 'Recurring'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-500">{customer.address}</div>
-                          {customer.gateCode && <div className="text-xs text-blue-600">Gate: {customer.gateCode}</div>}
-                          {customer.dogName && <div className="text-xs text-amber-600">🐕 {customer.dogName}</div>}
-                        </div>
-                        <div className="font-bold text-green-600">${customer.weeklyRate}</div>
-                      </label>
-                    );
-                  })}
-                  {customers.length === 0 && (
-                    <p className="text-gray-500 text-center py-8">No customers yet. Add some first!</p>
-                  )}
-                </div>
-              </div>
 
               {/* Route Order */}
               <div className="bg-white rounded-xl p-6 shadow-lg">
@@ -3722,7 +3696,8 @@ Best regards,
                   </div>
                 )}
               </div>
-            {isAdminMode && </div>}
+            </div>
+            )}
             {!isAdminMode && (
               /* Tech Mode: Simple Route List */
               <div className="bg-white rounded-xl shadow-lg overflow-hidden">
