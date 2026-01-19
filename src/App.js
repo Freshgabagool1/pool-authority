@@ -151,7 +151,10 @@ export default function PoolAuthority() {
   const [showCompleteServiceModal, setShowCompleteServiceModal] = useState(false);
   const [serviceToComplete, setServiceToComplete] = useState(null);
   const [serviceChemicals, setServiceChemicals] = useState([]);
-  const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
+  const [serviceWaterTest, setServiceWaterTest] = useState({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' });
+  const [serviceWaterTarget, setServiceWaterTarget] = useState({ chlorine: '3', ph: '7.5', alkalinity: '100', cya: '40', hardness: '300', salt: '3200', phosphates: '0' });
+  const [serviceChlorineType, setServiceChlorineType] = useState('liquid12'); // liquid10, liquid12, calHypo68, calHypo73, dichlor
+  const [serviceAcidType, setServiceAcidType] = useState('muriatic'); // muriatic, dryAcid
   const [sendEmailOnComplete, setSendEmailOnComplete] = useState(true);
   const [editingService, setEditingService] = useState(null);
   const [showEditServiceModal, setShowEditServiceModal] = useState(false);
@@ -362,7 +365,8 @@ Best regards,
 
   const [newCustomer, setNewCustomer] = useState({
     name: '', address: '', poolType: 'inground', phone: '', email: '',
-    weeklyRate: 100, gateCode: '', dogName: '', notes: ''
+    weeklyRate: 100, gateCode: '', dogName: '', notes: '', 
+    poolGallons: 15000, isSaltPool: false, targetSalt: 3200
   });
 
   const [newChemical, setNewChemical] = useState({
@@ -583,7 +587,7 @@ Best regards,
   const openCompleteServiceModal = (customer) => {
     setServiceToComplete(customer);
     setServiceChemicals([]);
-    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' });
     setShowCompleteServiceModal(true);
   };
 
@@ -660,7 +664,7 @@ Best regards,
     setShowCompleteServiceModal(false);
     setServiceToComplete(null);
     setServiceChemicals([]);
-    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' });
+    setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' });
   };
 
   // Quick complete without chemicals (legacy support)
@@ -811,30 +815,95 @@ Best regards,
     return scheduledCustomers;
   };
 
-  // LSI (Langelier Saturation Index) Calculation
+  // LSI (Langelier Saturation Index) Calculation - Using standard factor tables
+  // Formula: LSI = pH + TF + CF + AF - TDS Factor
+  // Where TF = Temperature Factor, CF = Calcium Factor, AF = Alkalinity Factor
   const calculateLSI = () => {
     const ph = parseFloat(waterTestReadings.pH) || 7.4;
     const temp = waterTestTemperature || 78;
     const calcium = parseFloat(waterTestReadings.calciumHardness) || 250;
     const alk = parseFloat(waterTestReadings.alkalinity) || 100;
     const cya = parseFloat(waterTestReadings.cyanuricAcid) || 0;
+    const salt = parseFloat(waterTestReadings.salt) || 0;
     
-    // Temperature factor
-    const tempF = (0.0122 * temp) - 0.44;
+    // Temperature Factor - interpolated from standard table
+    // Table: 32°F=0.0, 37°F=0.1, 46°F=0.2, 53°F=0.3, 60°F=0.4, 66°F=0.5, 76°F=0.6, 84°F=0.7, 94°F=0.8, 105°F=0.9
+    const tempTable = [
+      { t: 32, f: 0.0 }, { t: 37, f: 0.1 }, { t: 46, f: 0.2 }, { t: 53, f: 0.3 },
+      { t: 60, f: 0.4 }, { t: 66, f: 0.5 }, { t: 76, f: 0.6 }, { t: 84, f: 0.7 },
+      { t: 94, f: 0.8 }, { t: 105, f: 0.9 }
+    ];
+    let TF = 0.6; // default
+    for (let i = 0; i < tempTable.length - 1; i++) {
+      if (temp >= tempTable[i].t && temp <= tempTable[i + 1].t) {
+        const ratio = (temp - tempTable[i].t) / (tempTable[i + 1].t - tempTable[i].t);
+        TF = tempTable[i].f + ratio * (tempTable[i + 1].f - tempTable[i].f);
+        break;
+      }
+    }
+    if (temp < 32) TF = 0.0;
+    if (temp > 105) TF = 0.9;
     
-    // Calcium factor (log10 of calcium hardness)
-    const cfFactor = calcium > 0 ? Math.log10(calcium) - 0.4 : 0;
+    // Calcium Hardness Factor - interpolated from standard table
+    // Table: 25=1.0, 50=1.3, 75=1.5, 100=1.6, 125=1.7, 150=1.8, 200=1.9, 250=2.0, 300=2.1, 400=2.2, 600=2.5, 800=2.6, 1000=2.7
+    const calcTable = [
+      { c: 25, f: 1.0 }, { c: 50, f: 1.3 }, { c: 75, f: 1.5 }, { c: 100, f: 1.6 },
+      { c: 125, f: 1.7 }, { c: 150, f: 1.8 }, { c: 200, f: 1.9 }, { c: 250, f: 2.0 },
+      { c: 300, f: 2.1 }, { c: 400, f: 2.2 }, { c: 600, f: 2.5 }, { c: 800, f: 2.6 }, { c: 1000, f: 2.7 }
+    ];
+    let CF = 2.0; // default for 250
+    for (let i = 0; i < calcTable.length - 1; i++) {
+      if (calcium >= calcTable[i].c && calcium <= calcTable[i + 1].c) {
+        const ratio = (calcium - calcTable[i].c) / (calcTable[i + 1].c - calcTable[i].c);
+        CF = calcTable[i].f + ratio * (calcTable[i + 1].f - calcTable[i].f);
+        break;
+      }
+    }
+    if (calcium < 25) CF = 1.0;
+    if (calcium > 1000) CF = 2.7;
     
-    // Alkalinity factor - adjusted for CYA
-    // Carbonate alkalinity = TA - (CYA/3) approximately
-    const carbAlk = Math.max(alk - (cya / 3), 10);
-    const afFactor = carbAlk > 0 ? Math.log10(carbAlk) : 0;
+    // Carbonate Alkalinity = TA - (CYA × correction factor)
+    // CYA correction factor at pH 7.5 is ~0.33 (one-third)
+    // pH-dependent correction: 7.0=0.31, 7.2=0.31, 7.4=0.32, 7.5=0.33, 7.6=0.33, 7.8=0.35, 8.0=0.38
+    let cyaCorrection = 0.33;
+    if (ph <= 7.2) cyaCorrection = 0.31;
+    else if (ph <= 7.4) cyaCorrection = 0.32;
+    else if (ph <= 7.6) cyaCorrection = 0.33;
+    else if (ph <= 7.8) cyaCorrection = 0.35;
+    else cyaCorrection = 0.38;
     
-    // TDS factor (assuming 1000 ppm TDS for residential pools)
-    const tdsFactor = 12.1;
+    const carbAlk = Math.max(alk - (cya * cyaCorrection), 10);
+    
+    // Alkalinity Factor - interpolated from standard table  
+    // Table: 25=1.4, 50=1.7, 75=1.9, 100=2.0, 125=2.1, 150=2.2, 200=2.3, 250=2.4, 300=2.5, 400=2.6, 600=2.8, 800=2.9
+    const alkTable = [
+      { a: 25, f: 1.4 }, { a: 50, f: 1.7 }, { a: 75, f: 1.9 }, { a: 100, f: 2.0 },
+      { a: 125, f: 2.1 }, { a: 150, f: 2.2 }, { a: 200, f: 2.3 }, { a: 250, f: 2.4 },
+      { a: 300, f: 2.5 }, { a: 400, f: 2.6 }, { a: 600, f: 2.8 }, { a: 800, f: 2.9 }
+    ];
+    let AF = 2.0; // default for 100
+    for (let i = 0; i < alkTable.length - 1; i++) {
+      if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i + 1].a) {
+        const ratio = (carbAlk - alkTable[i].a) / (alkTable[i + 1].a - alkTable[i].a);
+        AF = alkTable[i].f + ratio * (alkTable[i + 1].f - alkTable[i].f);
+        break;
+      }
+    }
+    if (carbAlk < 25) AF = 1.4;
+    if (carbAlk > 800) AF = 2.9;
+    
+    // TDS Factor - Table: 0=12.0, 1000=12.1, 2000=12.2, 3000=12.25, 4000=12.3, 5000=12.35
+    const tds = 1000 + salt; // Salt directly adds to TDS
+    let TDSF = 12.1; // default for 1000
+    if (tds < 1000) TDSF = 12.0;
+    else if (tds < 2000) TDSF = 12.1;
+    else if (tds < 3000) TDSF = 12.2;
+    else if (tds < 4000) TDSF = 12.25;
+    else if (tds < 5000) TDSF = 12.3;
+    else TDSF = 12.35;
     
     // LSI = pH + TF + CF + AF - TDS Factor
-    const lsi = ph + tempF + cfFactor + afFactor - tdsFactor;
+    const lsi = ph + TF + CF + AF - TDSF;
     
     return lsi;
   };
@@ -3342,7 +3411,7 @@ Best regards,
                 <span className="hidden sm:inline">Admin</span>
               </button>
             )}
-            <span className="text-xs text-gray-400 hidden md:block">v2.8.0</span>
+            <span className="text-xs text-gray-400 hidden md:block">v3.3.0</span>
           </div>
         </div>
       </div>
@@ -4769,10 +4838,21 @@ Best regards,
                         >
                           <option value="inground">Inground</option>
                           <option value="above-ground">Above Ground</option>
-                          <option value="saltwater">Saltwater</option>
                           <option value="hot-tub">Hot Tub</option>
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Pool Gallons</label>
+                        <input
+                          type="number"
+                          value={newCustomer.poolGallons}
+                          onChange={e => setNewCustomer({ ...newCustomer, poolGallons: parseInt(e.target.value) || 15000 })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="15000"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Weekly Rate ($)</label>
                         <input
@@ -4782,7 +4862,33 @@ Best regards,
                           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
+                      <div className="flex items-end">
+                        <label className="flex items-center gap-3 cursor-pointer p-2 bg-blue-50 rounded-lg w-full">
+                          <input
+                            type="checkbox"
+                            checked={newCustomer.isSaltPool}
+                            onChange={e => setNewCustomer({ ...newCustomer, isSaltPool: e.target.checked })}
+                            className="w-5 h-5 text-blue-600 rounded"
+                          />
+                          <div>
+                            <span className="font-medium text-gray-700">🧂 Salt Pool</span>
+                          </div>
+                        </label>
+                      </div>
                     </div>
+                    {newCustomer.isSaltPool && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Target Salt Level (ppm)</label>
+                        <input
+                          type="number"
+                          value={newCustomer.targetSalt}
+                          onChange={e => setNewCustomer({ ...newCustomer, targetSalt: parseInt(e.target.value) || 3200 })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="3200"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Typical range: 2700-3400 ppm (check your salt cell manual)</p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Gate Code</label>
@@ -6099,7 +6205,7 @@ Best regards,
             <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-green-700">✓ Complete Service</h3>
-                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' }); }} className="text-gray-500 hover:text-gray-700">
+                <button onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' }); }} className="text-gray-500 hover:text-gray-700">
                   <Icons.X />
                 </button>
               </div>
@@ -6121,83 +6227,241 @@ Best regards,
                 </span>
               </div>
 
-              {/* Water Test Results */}
+              {/* Water Test - Orenda Style: Current vs Target */}
               <div className="mb-4">
-                <h4 className="font-bold text-gray-700 mb-2">💧 Water Test Results</h4>
+                <h4 className="font-bold text-gray-700 mb-2">💧 Water Test & Dosing Calculator</h4>
                 <div className="bg-cyan-50 p-3 rounded-lg">
-                  <div className="grid grid-cols-3 gap-3 mb-3">
+                  
+                  {/* Chemical Type Selectors */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Chlorine (ppm)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="0-10"
-                        value={serviceWaterTest.chlorine}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, chlorine: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
+                      <label className="block text-xs text-gray-600 mb-1">Chlorine Type</label>
+                      <select value={serviceChlorineType} onChange={e => setServiceChlorineType(e.target.value)}
+                        className="w-full px-2 py-1 border rounded text-xs">
+                        <option value="liquid12">Liquid 12.5%</option>
+                        <option value="liquid10">Liquid 10%</option>
+                        <option value="calHypo68">Cal-Hypo 68%</option>
+                        <option value="calHypo73">Cal-Hypo 73%</option>
+                        <option value="dichlor">Dichlor 56%</option>
+                      </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">pH</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="6.8-8.0"
-                        value={serviceWaterTest.ph}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, ph: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Alkalinity</label>
-                      <input
-                        type="number"
-                        placeholder="80-120"
-                        value={serviceWaterTest.alkalinity}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, alkalinity: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">CYA</label>
-                      <input
-                        type="number"
-                        placeholder="30-50"
-                        value={serviceWaterTest.cya}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, cya: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Hardness</label>
-                      <input
-                        type="number"
-                        placeholder="200-400"
-                        value={serviceWaterTest.hardness}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, hardness: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Phosphates (ppb)</label>
-                      <input
-                        type="number"
-                        placeholder="0-500"
-                        value={serviceWaterTest.phosphates}
-                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, phosphates: e.target.value })}
-                        className="w-full px-2 py-1 border rounded text-center text-sm"
-                      />
+                      <label className="block text-xs text-gray-600 mb-1">Acid Type</label>
+                      <select value={serviceAcidType} onChange={e => setServiceAcidType(e.target.value)}
+                        className="w-full px-2 py-1 border rounded text-xs">
+                        <option value="muriatic">Muriatic Acid</option>
+                        <option value="dryAcid">Dry Acid</option>
+                      </select>
                     </div>
                   </div>
-                  <div>
+                  
+                  {/* Temperature */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-xs text-gray-600 w-16">🌡️ Temp</label>
+                    <input type="number" placeholder="78" value={serviceWaterTest.temp}
+                      onChange={e => setServiceWaterTest({ ...serviceWaterTest, temp: e.target.value })}
+                      className="w-20 px-2 py-1 border rounded text-center font-bold bg-orange-50 text-sm" />
+                    <span className="text-xs text-gray-500">°F</span>
+                  </div>
+
+                  {/* Headers */}
+                  <div className="grid grid-cols-3 gap-1 mb-1 text-xs text-center">
+                    <div></div>
+                    <div className="font-bold text-blue-700">Current</div>
+                    <div className="font-bold text-green-700">Target</div>
+                  </div>
+                  
+                  {/* Reading Rows */}
+                  <div className="space-y-1">
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">FC (ppm)</label>
+                      <input type="number" step="0.1" value={serviceWaterTest.chlorine}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, chlorine: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" step="0.1" value={serviceWaterTarget.chlorine}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, chlorine: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">pH</label>
+                      <input type="number" step="0.1" value={serviceWaterTest.ph}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, ph: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" step="0.1" value={serviceWaterTarget.ph}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, ph: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">TA (ppm)</label>
+                      <input type="number" value={serviceWaterTest.alkalinity}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, alkalinity: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" value={serviceWaterTarget.alkalinity}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, alkalinity: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">CYA (ppm)</label>
+                      <input type="number" value={serviceWaterTest.cya}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, cya: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" value={serviceWaterTarget.cya}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, cya: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">Calcium</label>
+                      <input type="number" value={serviceWaterTest.hardness}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, hardness: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" value={serviceWaterTarget.hardness}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, hardness: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                    {serviceToComplete?.isSaltPool && (
+                      <div className="grid grid-cols-3 gap-1 items-center">
+                        <label className="text-xs text-gray-600">🧂 Salt</label>
+                        <input type="number" value={serviceWaterTest.salt}
+                          onChange={e => setServiceWaterTest({ ...serviceWaterTest, salt: e.target.value })}
+                          className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                        <input type="number" value={serviceWaterTarget.salt}
+                          onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, salt: e.target.value })}
+                          className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600">Phos (ppb)</label>
+                      <input type="number" value={serviceWaterTest.phosphates}
+                        onChange={e => setServiceWaterTest({ ...serviceWaterTest, phosphates: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
+                      <input type="number" value={serviceWaterTarget.phosphates}
+                        onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, phosphates: e.target.value })}
+                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                    </div>
+                  </div>
+                  
+                  {/* LSI Display */}
+                  {(serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.hardness) && (() => {
+                    const calcLSI = (ph, temp, calcium, alk, cya, salt) => {
+                      const tempTable = [{t:32,f:0},{t:37,f:0.1},{t:46,f:0.2},{t:53,f:0.3},{t:60,f:0.4},{t:66,f:0.5},{t:76,f:0.6},{t:84,f:0.7},{t:94,f:0.8},{t:105,f:0.9}];
+                      let TF = 0.6;
+                      for (let i = 0; i < tempTable.length - 1; i++) {
+                        if (temp >= tempTable[i].t && temp <= tempTable[i+1].t) {
+                          TF = tempTable[i].f + ((temp - tempTable[i].t) / (tempTable[i+1].t - tempTable[i].t)) * (tempTable[i+1].f - tempTable[i].f);
+                          break;
+                        }
+                      }
+                      const calcTable = [{c:25,f:1.0},{c:50,f:1.3},{c:75,f:1.5},{c:100,f:1.6},{c:150,f:1.8},{c:200,f:1.9},{c:250,f:2.0},{c:300,f:2.1},{c:400,f:2.2},{c:800,f:2.6}];
+                      let CF = 2.0;
+                      for (let i = 0; i < calcTable.length - 1; i++) {
+                        if (calcium >= calcTable[i].c && calcium <= calcTable[i+1].c) {
+                          CF = calcTable[i].f + ((calcium - calcTable[i].c) / (calcTable[i+1].c - calcTable[i].c)) * (calcTable[i+1].f - calcTable[i].f);
+                          break;
+                        }
+                      }
+                      const cyaCorr = ph <= 7.2 ? 0.31 : ph <= 7.6 ? 0.33 : 0.35;
+                      const carbAlk = Math.max(alk - (cya * cyaCorr), 10);
+                      const alkTable = [{a:25,f:1.4},{a:50,f:1.7},{a:75,f:1.9},{a:100,f:2.0},{a:150,f:2.2},{a:200,f:2.3},{a:300,f:2.5},{a:400,f:2.6}];
+                      let AF = 2.0;
+                      for (let i = 0; i < alkTable.length - 1; i++) {
+                        if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i+1].a) {
+                          AF = alkTable[i].f + ((carbAlk - alkTable[i].a) / (alkTable[i+1].a - alkTable[i].a)) * (alkTable[i+1].f - alkTable[i].f);
+                          break;
+                        }
+                      }
+                      const tds = 1000 + salt;
+                      const TDSF = tds < 1000 ? 12.0 : tds < 2000 ? 12.1 : tds < 4000 ? 12.2 : 12.3;
+                      return ph + TF + CF + AF - TDSF;
+                    };
+                    const temp = parseFloat(serviceWaterTest.temp) || 78;
+                    const currentLSI = calcLSI(parseFloat(serviceWaterTest.ph)||7.4, temp, parseFloat(serviceWaterTest.hardness)||250, parseFloat(serviceWaterTest.alkalinity)||100, parseFloat(serviceWaterTest.cya)||0, parseFloat(serviceWaterTest.salt)||0);
+                    const targetLSI = calcLSI(parseFloat(serviceWaterTarget.ph)||7.5, temp, parseFloat(serviceWaterTarget.hardness)||300, parseFloat(serviceWaterTarget.alkalinity)||100, parseFloat(serviceWaterTarget.cya)||40, parseFloat(serviceWaterTarget.salt)||0);
+                    const getColor = (lsi) => lsi >= 0.31 ? '#a855f7' : lsi >= 0 ? '#22c55e' : lsi >= -0.30 ? '#eab308' : '#ef4444';
+                    const getText = (lsi) => lsi >= 0.31 ? 'SCALING' : lsi >= 0 ? 'BALANCED' : lsi >= -0.30 ? 'OK' : 'CORROSIVE';
+                    return (
+                      <div className="grid grid-cols-2 gap-2 mt-3 p-2 bg-white rounded-lg">
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500">Current LSI</div>
+                          <div className="text-lg font-black" style={{color:getColor(currentLSI)}}>{currentLSI>=0?'+':''}{currentLSI.toFixed(2)}</div>
+                          <div className="text-xs" style={{color:getColor(currentLSI)}}>{getText(currentLSI)}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500">Target LSI</div>
+                          <div className="text-lg font-black" style={{color:getColor(targetLSI)}}>{targetLSI>=0?'+':''}{targetLSI.toFixed(2)}</div>
+                          <div className="text-xs" style={{color:getColor(targetLSI)}}>{getText(targetLSI)}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Dosing Recommendations */}
+                  {(() => {
+                    const recs = [];
+                    const gallons = serviceToComplete?.poolGallons || 15000;
+                    const factor = gallons / 10000;
+                    const toQtrGal = (floz) => (Math.round((floz / 128) * 4) / 4);
+                    
+                    const fcCurr = parseFloat(serviceWaterTest.chlorine) || 0;
+                    const fcTarg = parseFloat(serviceWaterTarget.chlorine) || 3;
+                    if (fcTarg > fcCurr) {
+                      const ppm = fcTarg - fcCurr;
+                      const rates = {liquid12:{r:10.7,liq:true,n:'Liquid 12.5%'},liquid10:{r:12.8,liq:true,n:'Liquid 10%'},calHypo68:{r:1.95,liq:false,n:'Cal-Hypo 68%'},calHypo73:{r:1.8,liq:false,n:'Cal-Hypo 73%'},dichlor:{r:2.1,liq:false,n:'Dichlor'}};
+                      const c = rates[serviceChlorineType];
+                      if (c.liq) { recs.push({chem:c.n,amount:`${toQtrGal(ppm*c.r*factor).toFixed(2)} gal`,color:'yellow'}); }
+                      else { recs.push({chem:c.n,amount:`${Math.ceil(ppm*c.r*factor/16)} lbs`,color:'yellow'}); }
+                    }
+                    
+                    const phCurr = parseFloat(serviceWaterTest.ph) || 7.4;
+                    const phTarg = parseFloat(serviceWaterTarget.ph) || 7.5;
+                    if (phCurr > phTarg + 0.1) {
+                      const drop = phCurr - phTarg;
+                      if (serviceAcidType === 'muriatic') { recs.push({chem:'Muriatic Acid',amount:`${toQtrGal((drop/0.2)*14*factor).toFixed(2)} gal`,color:'red'}); }
+                      else { recs.push({chem:'Dry Acid',amount:`${((drop/0.2)*6*factor/16).toFixed(1)} lbs`,color:'red'}); }
+                    } else if (phTarg > phCurr + 0.1) {
+                      recs.push({chem:'Soda Ash',amount:`${(((phTarg-phCurr)/0.2)*6*factor/16).toFixed(1)} lbs`,color:'blue'});
+                    }
+                    
+                    const taCurr = parseFloat(serviceWaterTest.alkalinity) || 100;
+                    const taTarg = parseFloat(serviceWaterTarget.alkalinity) || 100;
+                    if (taTarg > taCurr + 5) { recs.push({chem:'Bicarb',amount:`${(((taTarg-taCurr)/10)*1.4*factor).toFixed(1)} lbs`,color:'blue'}); }
+                    
+                    const cyaCurr = parseFloat(serviceWaterTest.cya) || 0;
+                    const cyaTarg = parseFloat(serviceWaterTarget.cya) || 40;
+                    if (cyaTarg > cyaCurr + 5) { recs.push({chem:'Stabilizer (CYA)',amount:`${(((cyaTarg-cyaCurr)/10)*13*factor/16).toFixed(1)} lbs`,color:'purple'}); }
+                    
+                    const chCurr = parseFloat(serviceWaterTest.hardness) || 250;
+                    const chTarg = parseFloat(serviceWaterTarget.hardness) || 300;
+                    if (chTarg > chCurr + 20) { recs.push({chem:'Calcium Chloride',amount:`${(((chTarg-chCurr)/10)*1.2*factor).toFixed(1)} lbs`,color:'blue'}); }
+                    
+                    if (serviceToComplete?.isSaltPool) {
+                      const saltCurr = parseFloat(serviceWaterTest.salt) || 0;
+                      const saltTarg = parseFloat(serviceWaterTarget.salt) || 3200;
+                      if (saltTarg > saltCurr + 100) { recs.push({chem:'Pool Salt',amount:`${Math.round(((saltTarg-saltCurr)/1000)*83*factor)} lbs`,color:'blue'}); }
+                    }
+                    
+                    if ((parseFloat(serviceWaterTest.phosphates)||0) > 500) { recs.push({chem:'Phos Remover',amount:'Treat',color:'green'}); }
+                    
+                    if (recs.length === 0) return null;
+                    return (
+                      <div className="mt-3 p-2 bg-white rounded-lg">
+                        <div className="text-xs font-bold text-gray-700 mb-2">📋 Dosing to Reach Targets:</div>
+                        <div className="space-y-1">
+                          {recs.map((r,i) => (
+                            <div key={i} className={`flex justify-between items-center px-2 py-1 rounded text-sm ${r.color==='yellow'?'bg-yellow-100':r.color==='red'?'bg-red-100':r.color==='blue'?'bg-blue-100':r.color==='purple'?'bg-purple-100':'bg-green-100'}`}>
+                              <span className="font-medium">{r.chem}</span>
+                              <span className="font-bold">{r.amount}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  <div className="mt-3">
                     <label className="block text-xs text-gray-600 mb-1">Service Notes</label>
-                    <textarea
-                      placeholder="Pool condition, issues noticed, work performed..."
-                      value={serviceWaterTest.notes}
+                    <textarea placeholder="Pool condition, issues noticed, work performed..." value={serviceWaterTest.notes}
                       onChange={e => setServiceWaterTest({ ...serviceWaterTest, notes: e.target.value })}
-                      className="w-full px-2 py-1 border rounded text-sm"
-                      rows="2"
-                    />
+                      className="w-full px-2 py-1 border rounded text-sm" rows="2" />
                   </div>
                 </div>
               </div>
@@ -6333,7 +6597,7 @@ Best regards,
               {/* Complete Button */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', phosphates: '', notes: '' }); }}
+                  onClick={() => { setShowCompleteServiceModal(false); setServiceToComplete(null); setServiceChemicals([]); setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' }); }}
                   className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
                 >
                   Cancel
@@ -8955,7 +9219,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.8.0
+        v3.3.0
       </div>
     </div>
   );
