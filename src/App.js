@@ -2205,11 +2205,13 @@ Best regards,
       if (serviceData.waterTest) {
         const wt = serviceData.waterTest;
         const results = [];
-        if (wt.chlorine) results.push(`Chlorine: ${wt.chlorine} ppm`);
+        if (wt.temp) results.push(`Temp: ${wt.temp}°F`);
+        if (wt.chlorine) results.push(`FC: ${wt.chlorine} ppm`);
         if (wt.ph) results.push(`pH: ${wt.ph}`);
-        if (wt.alkalinity) results.push(`Alkalinity: ${wt.alkalinity}`);
-        if (wt.cya) results.push(`CYA: ${wt.cya}`);
-        if (wt.hardness) results.push(`Hardness: ${wt.hardness}`);
+        if (wt.alkalinity) results.push(`TA: ${wt.alkalinity} ppm`);
+        if (wt.cya) results.push(`CYA: ${wt.cya} ppm`);
+        if (wt.hardness) results.push(`Calcium: ${wt.hardness} ppm`);
+        if (wt.salt) results.push(`Salt: ${wt.salt} ppm`);
         if (wt.phosphates) results.push(`Phosphates: ${wt.phosphates} ppb`);
         if (results.length > 0) {
           waterTestResults = results.join(' | ');
@@ -3411,7 +3413,7 @@ Best regards,
                 <span className="hidden sm:inline">Admin</span>
               </button>
             )}
-            <span className="text-xs text-gray-400 hidden md:block">v3.3.0</span>
+            <span className="text-xs text-gray-400 hidden md:block">v3.4.0</span>
           </div>
         </div>
       </div>
@@ -4991,10 +4993,21 @@ Best regards,
                         >
                           <option value="inground">Inground</option>
                           <option value="above-ground">Above Ground</option>
-                          <option value="saltwater">Saltwater</option>
                           <option value="hot-tub">Hot Tub</option>
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Pool Gallons</label>
+                        <input
+                          type="number"
+                          value={editingCustomer.poolGallons || 15000}
+                          onChange={e => setEditingCustomer({ ...editingCustomer, poolGallons: parseInt(e.target.value) || 15000 })}
+                          className="w-full px-4 py-2 border rounded-lg"
+                          placeholder="15000"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Weekly Rate ($)</label>
                         <input
@@ -5004,7 +5017,31 @@ Best regards,
                           className="w-full px-4 py-2 border rounded-lg"
                         />
                       </div>
+                      <div className="flex items-end">
+                        <label className="flex items-center gap-3 cursor-pointer p-2 bg-blue-50 rounded-lg w-full">
+                          <input
+                            type="checkbox"
+                            checked={editingCustomer.isSaltPool || false}
+                            onChange={e => setEditingCustomer({ ...editingCustomer, isSaltPool: e.target.checked })}
+                            className="w-5 h-5 text-blue-600 rounded"
+                          />
+                          <span className="font-medium text-gray-700">🧂 Salt Pool</span>
+                        </label>
+                      </div>
                     </div>
+                    {editingCustomer.isSaltPool && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Target Salt Level (ppm)</label>
+                        <input
+                          type="number"
+                          value={editingCustomer.targetSalt || 3200}
+                          onChange={e => setEditingCustomer({ ...editingCustomer, targetSalt: parseInt(e.target.value) || 3200 })}
+                          className="w-full px-4 py-2 border rounded-lg"
+                          placeholder="3200"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Typical range: 2700-3400 ppm</p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Gate Code</label>
@@ -9219,7 +9256,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.3.0
+        v3.4.0
       </div>
     </div>
   );
