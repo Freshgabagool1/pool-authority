@@ -177,6 +177,38 @@ export default function PoolAuthority() {
   const [historySearch, setHistorySearch] = useState('');
   const [historyDateFilter, setHistoryDateFilter] = useState('');
   
+  // Water Test Calculator State
+  const [waterTestCustomer, setWaterTestCustomer] = useState('');
+  const [waterTestPoolGallons, setWaterTestPoolGallons] = useState(15000);
+  const [waterTestTemperature, setWaterTestTemperature] = useState(78);
+  const [waterTestReadings, setWaterTestReadings] = useState({
+    freeChlorine: '',
+    pH: '',
+    alkalinity: '',
+    cyanuricAcid: '',
+    calciumHardness: '',
+    salt: '',
+    phosphates: ''
+  });
+  const [waterTestTargets, setWaterTestTargets] = useState({
+    freeChlorine: 3,
+    pH: 7.4,
+    alkalinity: 100,
+    cyanuricAcid: 40,
+    calciumHardness: 300,
+    salt: 3200
+  });
+  const [waterTestChemicalTypes, setWaterTestChemicalTypes] = useState({
+    chlorine: 'liquid12',  // liquid10, liquid12, calHypo68, calHypo73, dichlor, trichlor
+    cya: 'granular',       // granular, liquid
+    acid: 'muriatic'       // muriatic, dryAcid
+  });
+  const [waterTestResults, setWaterTestResults] = useState(null);
+  const [chemicalsAdded, setChemicalsAdded] = useState([]); // Track what chemicals were actually added
+  const [waterTestNotes, setWaterTestNotes] = useState('');
+  const [showWaterTestEmailModal, setShowWaterTestEmailModal] = useState(false);
+  const [waterTestHistory, setWaterTestHistory] = useState([]); // Store past water tests
+  
   // Email state
   const [emailLog, setEmailLog] = useState([]);
   const [billedCustomers, setBilledCustomers] = useState({}); // Track customers billed this month: { 'customerId-YYYY-MM': true }
@@ -345,8 +377,8 @@ Best regards,
   useEffect(() => {
     const loadData = () => {
       try {
-        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers', 'pool-saved-quote-items', 'pool-employees'];
-        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers, setSavedQuoteItems, setEmployees];
+        const keys = ['pool-customers', 'pool-history', 'pool-recurring', 'pool-chemicals', 'pool-jobs', 'pool-invoices', 'pool-quotes', 'pool-wear-items', 'pool-company-settings', 'pool-email-templates', 'pool-email-log', 'pool-paid-invoices', 'pool-billed-customers', 'pool-saved-quote-items', 'pool-employees', 'pool-water-test-history'];
+        const setters = [setCustomers, setServiceHistory, setRecurringServices, setChemicalInventory, setOneTimeJobs, setInvoices, setQuotes, setWearItems, setCompanySettings, setEmailTemplates, setEmailLog, setPaidInvoices, setBilledCustomers, setSavedQuoteItems, setEmployees, setWaterTestHistory];
         for (let i = 0; i < keys.length; i++) {
           const result = localStorage.getItem(keys[i]);
           if (result) {
@@ -439,6 +471,7 @@ Best regards,
   const saveBilledCustomers = (data) => saveData('pool-billed-customers', data, setBilledCustomers);
   const saveSavedQuoteItems = (data) => saveData('pool-saved-quote-items', data, setSavedQuoteItems);
   const saveEmployees = (data) => saveData('pool-employees', data, setEmployees);
+  const saveWaterTestHistory = (data) => saveData('pool-water-test-history', data, setWaterTestHistory);
 
   // Searchable Customer Select Component
   const CustomerSelect = ({ value, onChange, placeholder = "Search or select customer...", className = "" }) => {
@@ -664,14 +697,22 @@ Best regards,
     const recurring = recurringServices.filter(r => {
       const customer = customers.find(c => c.id === r.customerId);
       if (!customer) return false;
-      const serviceDate = new Date(dateStr);
-      const startDate = new Date(r.startDate || customer.createdDate);
+      
+      // Parse dates as local dates (no timezone issues)
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const serviceDate = new Date(year, month - 1, day);
+      
+      const startDateStr = r.startDate || customer.createdDate || dateStr;
+      const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+      const startDate = new Date(sYear, sMonth - 1, sDay);
+      
       if (serviceDate < startDate) return false;
       const dayOfWeek = serviceDate.getDay();
-      const scheduledDay = r.dayOfWeek || 1; // Default Monday
+      const scheduledDay = r.dayOfWeek !== undefined ? parseInt(r.dayOfWeek) : 1;
       if (r.frequency === 'weekly') return dayOfWeek === scheduledDay;
       if (r.frequency === 'biweekly') {
-        const weeksDiff = Math.floor((serviceDate - startDate) / (7 * 24 * 60 * 60 * 1000));
+        const timeDiff = serviceDate.getTime() - startDate.getTime();
+        const weeksDiff = Math.floor(timeDiff / (7 * 24 * 60 * 60 * 1000));
         return dayOfWeek === scheduledDay && weeksDiff % 2 === 0;
       }
       if (r.frequency === 'monthly') {
@@ -687,29 +728,40 @@ Best regards,
   const getScheduledCustomersForDate = (dateStr, employeeFilter = 'all') => {
     let scheduledCustomers = [];
     
+    // Parse the target date as local date (no timezone issues)
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const targetDate = new Date(year, month - 1, day);
+    const dayOfWeek = targetDate.getDay();
+    
     // Get customers from recurring services
     recurringServices.filter(r => r.active).forEach(r => {
       const customer = customers.find(c => c.id === r.customerId);
       if (!customer) return;
       
       // Filter by employee if specified
-      if (employeeFilter !== 'all' && r.employeeId !== employeeFilter) return;
+      if (employeeFilter !== 'all') {
+        if (employeeFilter === '' && r.employeeId) return; // Filter for unassigned only
+        if (employeeFilter !== '' && r.employeeId !== parseInt(employeeFilter)) return;
+      }
       
-      const serviceDate = new Date(dateStr + 'T12:00:00');
-      const startDate = new Date(r.startDate || customer.createdDate);
-      if (serviceDate < startDate) return;
+      // Parse start date as local date
+      const startDateStr = r.startDate || customer.createdDate || dateStr;
+      const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+      const startDate = new Date(sYear, sMonth - 1, sDay);
       
-      const dayOfWeek = serviceDate.getDay();
-      const scheduledDay = r.dayOfWeek || 1;
+      if (targetDate < startDate) return;
+      
+      const scheduledDay = r.dayOfWeek !== undefined ? parseInt(r.dayOfWeek) : 1;
       
       let isScheduled = false;
       if (r.frequency === 'weekly') {
         isScheduled = dayOfWeek === scheduledDay;
       } else if (r.frequency === 'biweekly') {
-        const weeksDiff = Math.floor((serviceDate - startDate) / (7 * 24 * 60 * 60 * 1000));
+        const timeDiff = targetDate.getTime() - startDate.getTime();
+        const weeksDiff = Math.floor(timeDiff / (7 * 24 * 60 * 60 * 1000));
         isScheduled = dayOfWeek === scheduledDay && weeksDiff % 2 === 0;
       } else if (r.frequency === 'monthly') {
-        isScheduled = serviceDate.getDate() === startDate.getDate();
+        isScheduled = targetDate.getDate() === startDate.getDate();
       }
       
       if (isScheduled && !scheduledCustomers.find(c => c.id === customer.id && c.recurringId === r.id)) {
@@ -717,8 +769,8 @@ Best regards,
           ...customer, 
           recurringId: r.id, 
           frequency: r.frequency,
-          scheduledTime: r.scheduledTime || null, // Add time
-          employeeId: r.employeeId || null // Add employee
+          scheduledTime: r.scheduledTime || null,
+          employeeId: r.employeeId || null
         });
       }
     });
@@ -726,7 +778,10 @@ Best regards,
     // Also add customers from one-time jobs scheduled for this date
     oneTimeJobs.filter(j => j.date === dateStr).forEach(job => {
       // Filter by employee if specified
-      if (employeeFilter !== 'all' && job.employeeId !== employeeFilter) return;
+      if (employeeFilter !== 'all') {
+        if (employeeFilter === '' && job.employeeId) return;
+        if (employeeFilter !== '' && job.employeeId !== parseInt(employeeFilter)) return;
+      }
       
       const customer = customers.find(c => c.id === parseInt(job.customerId));
       if (customer && !scheduledCustomers.find(c => c.id === customer.id && c.isOneTimeJob && c.jobId === job.id)) {
@@ -737,27 +792,504 @@ Best regards,
           jobPrice: job.price,
           jobId: job.id,
           jobData: job,
-          scheduledTime: job.scheduledTime || null, // Add time
-          employeeId: job.employeeId || null // Add employee
+          scheduledTime: job.scheduledTime || null,
+          employeeId: job.employeeId || null
         });
       }
     });
     
     // Sort: timed appointments first (by time), then untimed
     scheduledCustomers.sort((a, b) => {
-      // Both have times - sort by time
       if (a.scheduledTime && b.scheduledTime) {
         return a.scheduledTime.localeCompare(b.scheduledTime);
       }
-      // Only a has time - a comes first
       if (a.scheduledTime && !b.scheduledTime) return -1;
-      // Only b has time - b comes first
       if (!a.scheduledTime && b.scheduledTime) return 1;
-      // Neither has time - keep original order (could add distance sorting here later)
       return 0;
     });
     
     return scheduledCustomers;
+  };
+
+  // LSI (Langelier Saturation Index) Calculation
+  const calculateLSI = () => {
+    const ph = parseFloat(waterTestReadings.pH) || 7.4;
+    const temp = waterTestTemperature || 78;
+    const calcium = parseFloat(waterTestReadings.calciumHardness) || 250;
+    const alk = parseFloat(waterTestReadings.alkalinity) || 100;
+    const cya = parseFloat(waterTestReadings.cyanuricAcid) || 0;
+    
+    // Temperature factor
+    const tempF = (0.0122 * temp) - 0.44;
+    
+    // Calcium factor (log10 of calcium hardness)
+    const cfFactor = calcium > 0 ? Math.log10(calcium) - 0.4 : 0;
+    
+    // Alkalinity factor - adjusted for CYA
+    // Carbonate alkalinity = TA - (CYA/3) approximately
+    const carbAlk = Math.max(alk - (cya / 3), 10);
+    const afFactor = carbAlk > 0 ? Math.log10(carbAlk) : 0;
+    
+    // TDS factor (assuming 1000 ppm TDS for residential pools)
+    const tdsFactor = 12.1;
+    
+    // LSI = pH + TF + CF + AF - TDS Factor
+    const lsi = ph + tempF + cfFactor + afFactor - tdsFactor;
+    
+    return lsi;
+  };
+
+  // Get LSI status color and text
+  const getLSIStatus = (lsi) => {
+    if (lsi >= 0.31) {
+      return { color: '#a855f7', bgColor: 'bg-purple-100', borderColor: 'border-purple-500', text: 'SCALING ⚠️', description: 'Over-saturated, scale-forming water' };
+    } else if (lsi >= 0) {
+      return { color: '#22c55e', bgColor: 'bg-green-100', borderColor: 'border-green-500', text: 'BALANCED ✓', description: 'Ideal LSI balance' };
+    } else if (lsi >= -0.30) {
+      return { color: '#eab308', bgColor: 'bg-yellow-100', borderColor: 'border-yellow-500', text: 'ACCEPTABLE', description: 'Close enough, but slightly corrosive' };
+    } else {
+      return { color: '#ef4444', bgColor: 'bg-red-100', borderColor: 'border-red-500', text: 'CORROSIVE ⚠️', description: 'Aggressive, corrosive water' };
+    }
+  };
+
+  // Chemical dosing rates per 10,000 gallons (per 1 ppm increase)
+  const chemicalRates = {
+    chlorine: {
+      liquid10: { rate: 12.8, name: 'Liquid Chlorine 10%', unit: 'fl oz', isLiquid: true },
+      liquid12: { rate: 10.7, name: 'Liquid Chlorine 12.5%', unit: 'fl oz', isLiquid: true },
+      calHypo68: { rate: 1.95, name: 'Cal-Hypo 68%', unit: 'oz', isLiquid: false },
+      calHypo73: { rate: 1.8, name: 'Cal-Hypo 73%', unit: 'oz', isLiquid: false },
+      dichlor: { rate: 2.1, name: 'Dichlor 56%', unit: 'oz', isLiquid: false },
+      trichlor: { rate: 1.5, name: 'Trichlor', unit: 'oz', isLiquid: false }
+    },
+    cya: {
+      granular: { rate: 13, name: 'Granular CYA', unit: 'oz', isLiquid: false, per10ppm: true },
+      liquid: { rate: 16, name: 'Liquid CYA', unit: 'fl oz', isLiquid: true, per10ppm: true }
+    },
+    acid: {
+      muriatic: { rate: 14, name: 'Muriatic Acid 31.45%', unit: 'fl oz', isLiquid: true, per02pH: true },
+      dryAcid: { rate: 2.1, name: 'Dry Acid', unit: 'oz', isLiquid: false, per02pH: true }
+    }
+  };
+
+  // Real-time chemical dosing calculation (Orenda-style)
+  const getChemicalDoses = () => {
+    const gallons = waterTestPoolGallons || 15000;
+    const factor = gallons / 10000;
+    const doses = [];
+
+    // Chlorine
+    const currentCl = parseFloat(waterTestReadings.freeChlorine) || 0;
+    const targetCl = waterTestTargets.freeChlorine;
+    const clType = chemicalRates.chlorine[waterTestChemicalTypes.chlorine] || chemicalRates.chlorine.liquid12;
+    
+    if (currentCl < targetCl - 0.2) {
+      const ppmNeeded = targetCl - currentCl;
+      const amount = ppmNeeded * clType.rate * factor;
+      doses.push({
+        id: 'chlorine',
+        chemical: clType.name,
+        amount: amount,
+        unit: clType.unit,
+        altAmount: clType.isLiquid ? (amount / 128).toFixed(2) : (amount / 16).toFixed(2),
+        altUnit: clType.isLiquid ? 'gal' : 'lbs',
+        from: currentCl,
+        to: targetCl,
+        label: 'FC',
+        color: 'yellow',
+        needed: true
+      });
+    }
+
+    // pH
+    const currentpH = parseFloat(waterTestReadings.pH) || 0;
+    const targetpH = waterTestTargets.pH;
+    
+    if (currentpH > 0 && currentpH > targetpH + 0.1) {
+      const acidType = chemicalRates.acid[waterTestChemicalTypes.acid] || chemicalRates.acid.muriatic;
+      const pHDrop = currentpH - targetpH;
+      const amount = (pHDrop / 0.2) * acidType.rate * factor;
+      doses.push({
+        id: 'acid',
+        chemical: acidType.name,
+        amount: amount,
+        unit: acidType.unit,
+        altAmount: acidType.isLiquid ? (amount / 128).toFixed(2) : (amount / 16).toFixed(2),
+        altUnit: acidType.isLiquid ? 'gal' : 'lbs',
+        from: currentpH,
+        to: targetpH,
+        label: 'pH',
+        color: 'red',
+        warning: 'Add slowly with pump running',
+        needed: true
+      });
+    } else if (currentpH > 0 && currentpH < targetpH - 0.1) {
+      const pHRaise = targetpH - currentpH;
+      const amount = (pHRaise / 0.2) * 6 * factor;
+      doses.push({
+        id: 'sodaAsh',
+        chemical: 'Soda Ash',
+        amount: amount,
+        unit: 'oz',
+        altAmount: (amount / 16).toFixed(2),
+        altUnit: 'lbs',
+        from: currentpH,
+        to: targetpH,
+        label: 'pH',
+        color: 'blue',
+        needed: true
+      });
+    }
+
+    // Alkalinity
+    const currentTA = parseFloat(waterTestReadings.alkalinity) || 0;
+    const targetTA = waterTestTargets.alkalinity;
+    
+    if (currentTA > 0 && currentTA < targetTA - 10) {
+      const ppmNeeded = targetTA - currentTA;
+      const amount = (ppmNeeded / 10) * 1.4 * factor;
+      doses.push({
+        id: 'alkalinity',
+        chemical: 'Sodium Bicarbonate',
+        amount: amount * 16, // convert to oz
+        unit: 'oz',
+        altAmount: amount.toFixed(2),
+        altUnit: 'lbs',
+        from: currentTA,
+        to: targetTA,
+        label: 'TA',
+        color: 'blue',
+        tip: 'Add before adjusting pH',
+        needed: true
+      });
+    } else if (currentTA > 0 && currentTA > targetTA + 20) {
+      const acidType = chemicalRates.acid[waterTestChemicalTypes.acid] || chemicalRates.acid.muriatic;
+      const ppmDrop = currentTA - targetTA;
+      const amount = (ppmDrop / 10) * acidType.rate * 1.8 * factor;
+      doses.push({
+        id: 'alkAcid',
+        chemical: `${acidType.name} (for TA)`,
+        amount: amount,
+        unit: acidType.unit,
+        altAmount: acidType.isLiquid ? (amount / 128).toFixed(2) : (amount / 16).toFixed(2),
+        altUnit: acidType.isLiquid ? 'gal' : 'lbs',
+        from: currentTA,
+        to: targetTA,
+        label: 'TA',
+        color: 'red',
+        warning: 'Will also lower pH',
+        needed: true
+      });
+    }
+
+    // CYA
+    const currentCYA = parseFloat(waterTestReadings.cyanuricAcid) || 0;
+    const targetCYA = waterTestTargets.cyanuricAcid;
+    const cyaType = chemicalRates.cya[waterTestChemicalTypes.cya] || chemicalRates.cya.granular;
+    
+    if (currentCYA < targetCYA - 5) {
+      const ppmNeeded = targetCYA - currentCYA;
+      const amount = (ppmNeeded / 10) * cyaType.rate * factor;
+      doses.push({
+        id: 'cya',
+        chemical: cyaType.name,
+        amount: amount,
+        unit: cyaType.unit,
+        altAmount: cyaType.isLiquid ? (amount / 128).toFixed(2) : (amount / 16).toFixed(2),
+        altUnit: cyaType.isLiquid ? 'gal' : 'lbs',
+        from: currentCYA,
+        to: targetCYA,
+        label: 'CYA',
+        color: 'purple',
+        tip: waterTestChemicalTypes.cya === 'granular' ? 'Dissolve in warm water first' : 'Add directly to skimmer',
+        needed: true
+      });
+    } else if (currentCYA > 100) {
+      doses.push({
+        id: 'cyaHigh',
+        chemical: 'CYA Too High',
+        amount: null,
+        from: currentCYA,
+        to: targetCYA,
+        label: 'CYA',
+        color: 'red',
+        warning: `Drain ${Math.round((1 - targetCYA/currentCYA) * 100)}% and refill`,
+        needed: false
+      });
+    }
+
+    // Calcium
+    const currentCH = parseFloat(waterTestReadings.calciumHardness) || 0;
+    const targetCH = waterTestTargets.calciumHardness;
+    
+    if (currentCH > 0 && currentCH < targetCH - 30) {
+      const ppmNeeded = targetCH - currentCH;
+      const amount = (ppmNeeded / 10) * 1.25 * factor;
+      doses.push({
+        id: 'calcium',
+        chemical: 'Calcium Chloride',
+        amount: amount * 16,
+        unit: 'oz',
+        altAmount: amount.toFixed(2),
+        altUnit: 'lbs',
+        from: currentCH,
+        to: targetCH,
+        label: 'CH',
+        color: 'gray',
+        needed: true
+      });
+    } else if (currentCH > 500) {
+      doses.push({
+        id: 'calciumHigh',
+        chemical: 'Calcium Too High',
+        amount: null,
+        from: currentCH,
+        to: targetCH,
+        label: 'CH',
+        color: 'orange',
+        warning: 'Consider partial drain to prevent scaling',
+        needed: false
+      });
+    }
+
+    // Salt
+    const currentSalt = parseFloat(waterTestReadings.salt) || 0;
+    const targetSalt = waterTestTargets.salt;
+    
+    if (currentSalt > 0 && currentSalt < targetSalt - 200) {
+      const ppmNeeded = targetSalt - currentSalt;
+      const lbs = (ppmNeeded / 1000) * 83 * factor;
+      doses.push({
+        id: 'salt',
+        chemical: 'Pool Salt',
+        amount: lbs,
+        unit: 'lbs',
+        altAmount: Math.ceil(lbs / 40),
+        altUnit: '40lb bags',
+        from: currentSalt,
+        to: targetSalt,
+        label: 'Salt',
+        color: 'blue',
+        needed: true
+      });
+    }
+
+    // Phosphates
+    const currentPhos = parseFloat(waterTestReadings.phosphates) || 0;
+    if (currentPhos > 500) {
+      doses.push({
+        id: 'phosphates',
+        chemical: 'Phosphate Remover',
+        amount: null,
+        from: currentPhos,
+        to: 0,
+        label: 'Phos',
+        color: 'green',
+        warning: `${currentPhos} ppb - Treatment recommended`,
+        needed: true
+      });
+    }
+
+    return doses;
+  };
+
+  // Save water test and add chemicals to bill
+  const saveWaterTest = (addToBill = false) => {
+    const customer = customers.find(c => c.id === parseInt(waterTestCustomer));
+    if (!customer) {
+      alert('Please select a customer first');
+      return;
+    }
+
+    const testRecord = {
+      id: Date.now(),
+      customerId: customer.id,
+      customerName: customer.name,
+      date: getLocalDateString(),
+      readings: { ...waterTestReadings },
+      temperature: waterTestTemperature,
+      poolGallons: waterTestPoolGallons,
+      lsi: calculateLSI(),
+      chemicalsAdded: [...chemicalsAdded],
+      notes: waterTestNotes,
+      billedAmount: addToBill ? chemicalsAdded.reduce((sum, c) => sum + (c.cost || 0), 0) : 0
+    };
+
+    // Save to history
+    const newHistory = [testRecord, ...waterTestHistory];
+    saveWaterTestHistory(newHistory);
+
+    // Add chemicals to customer's service history if billing
+    if (addToBill && chemicalsAdded.length > 0) {
+      const chemicalCost = chemicalsAdded.reduce((sum, c) => sum + (c.cost || 0), 0);
+      const serviceRecord = {
+        id: Date.now(),
+        customerId: customer.id,
+        customerName: customer.name,
+        date: getLocalDateString(),
+        poolType: customer.poolType || 'Standard',
+        weeklyRate: 0,
+        totalAmount: chemicalCost,
+        chemicalsUsed: chemicalsAdded.map(c => ({
+          name: c.chemical,
+          amount: c.amount,
+          unit: c.unit,
+          cost: c.cost || 0
+        })),
+        waterTest: { ...waterTestReadings },
+        serviceNotes: `Water test & chemical treatment. ${waterTestNotes}`,
+        isChemicalService: true
+      };
+      saveServiceHistory([serviceRecord, ...serviceHistory]);
+    }
+
+    return testRecord;
+  };
+
+  // Email water test results to customer  
+  const emailWaterTestResults = async () => {
+    const customer = customers.find(c => c.id === parseInt(waterTestCustomer));
+    if (!customer || !customer.email) {
+      alert('Customer email not found');
+      return;
+    }
+
+    const lsi = calculateLSI();
+    const lsiStatus = getLSIStatus(lsi);
+    const doses = getChemicalDoses();
+
+    const readingsHtml = `
+      <table style="width:100%; border-collapse: collapse; margin: 15px 0;">
+        <tr style="background: #f3f4f6;">
+          <th style="padding: 10px; text-align: left; border: 1px solid #e5e7eb;">Parameter</th>
+          <th style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">Reading</th>
+          <th style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">Target</th>
+          <th style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">Status</th>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Free Chlorine</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.freeChlorine || '-'} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.freeChlorine} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${(parseFloat(waterTestReadings.freeChlorine) || 0) >= waterTestTargets.freeChlorine - 0.5 ? '✓' : '⚠️'}</td>
+        </tr>
+        <tr style="background: #f9fafb;">
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">pH</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.pH || '-'}</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.pH}</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${Math.abs((parseFloat(waterTestReadings.pH) || 7.4) - waterTestTargets.pH) <= 0.2 ? '✓' : '⚠️'}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Alkalinity</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.alkalinity || '-'} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.alkalinity} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${Math.abs((parseFloat(waterTestReadings.alkalinity) || 0) - waterTestTargets.alkalinity) <= 20 ? '✓' : '⚠️'}</td>
+        </tr>
+        <tr style="background: #f9fafb;">
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">CYA (Stabilizer)</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.cyanuricAcid || '-'} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.cyanuricAcid} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${Math.abs((parseFloat(waterTestReadings.cyanuricAcid) || 0) - waterTestTargets.cyanuricAcid) <= 15 ? '✓' : '⚠️'}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Calcium Hardness</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.calciumHardness || '-'} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.calciumHardness} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${Math.abs((parseFloat(waterTestReadings.calciumHardness) || 0) - waterTestTargets.calciumHardness) <= 50 ? '✓' : '⚠️'}</td>
+        </tr>
+        ${waterTestReadings.salt ? `
+        <tr style="background: #f9fafb;">
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Salt</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.salt} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestTargets.salt} ppm</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${Math.abs((parseFloat(waterTestReadings.salt) || 0) - waterTestTargets.salt) <= 300 ? '✓' : '⚠️'}</td>
+        </tr>` : ''}
+        ${waterTestReadings.phosphates ? `
+        <tr>
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Phosphates</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${waterTestReadings.phosphates} ppb</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">&lt;500 ppb</td>
+          <td style="padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${(parseFloat(waterTestReadings.phosphates) || 0) <= 500 ? '✓' : '⚠️'}</td>
+        </tr>` : ''}
+      </table>
+    `;
+
+    const chemicalsHtml = chemicalsAdded.length > 0 ? `
+      <h3 style="margin-top: 20px; color: #1e3a5f;">Chemicals Added Today:</h3>
+      <table style="width:100%; border-collapse: collapse; margin: 15px 0;">
+        <tr style="background: #f3f4f6;">
+          <th style="padding: 10px; text-align: left; border: 1px solid #e5e7eb;">Chemical</th>
+          <th style="padding: 10px; text-align: right; border: 1px solid #e5e7eb;">Amount</th>
+          ${chemicalsAdded.some(c => c.cost) ? '<th style="padding: 10px; text-align: right; border: 1px solid #e5e7eb;">Cost</th>' : ''}
+        </tr>
+        ${chemicalsAdded.map(c => `
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${c.chemical}</td>
+            <td style="padding: 10px; text-align: right; border: 1px solid #e5e7eb;">${c.amount.toFixed(1)} ${c.unit}</td>
+            ${c.cost ? `<td style="padding: 10px; text-align: right; border: 1px solid #e5e7eb;">$${c.cost.toFixed(2)}</td>` : ''}
+          </tr>
+        `).join('')}
+        ${chemicalsAdded.some(c => c.cost) ? `
+        <tr style="background: #f3f4f6; font-weight: bold;">
+          <td style="padding: 10px; border: 1px solid #e5e7eb;">Total</td>
+          <td style="padding: 10px; border: 1px solid #e5e7eb;"></td>
+          <td style="padding: 10px; text-align: right; border: 1px solid #e5e7eb;">$${chemicalsAdded.reduce((sum, c) => sum + (c.cost || 0), 0).toFixed(2)}</td>
+        </tr>` : ''}
+      </table>
+    ` : '';
+
+    const emailBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #1e3a5f 0%, #5bb4d8 100%); padding: 20px; text-align: center;">
+          <h1 style="color: white; margin: 0;">Pool Water Test Results</h1>
+        </div>
+        <div style="padding: 20px; background: white;">
+          <p>Dear ${customer.name},</p>
+          <p>Here are the results from your pool water test on ${new Date().toLocaleDateString()}:</p>
+          
+          <div style="background: ${lsiStatus.color}20; border-left: 4px solid ${lsiStatus.color}; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0;">
+            <strong style="color: ${lsiStatus.color};">Water Balance (LSI): ${lsi >= 0 ? '+' : ''}${lsi.toFixed(2)} - ${lsiStatus.text}</strong>
+            <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">${lsiStatus.description}</p>
+          </div>
+
+          ${readingsHtml}
+          ${chemicalsHtml}
+          ${waterTestNotes ? `<p style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 20px;"><strong>Notes:</strong> ${waterTestNotes}</p>` : ''}
+          
+          <p style="margin-top: 20px;">If you have any questions about these results, please don't hesitate to contact us.</p>
+          <p>Thank you for choosing ${companySettings.name || 'Pool Authority'}!</p>
+        </div>
+        <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #666;">
+          ${companySettings.name || 'Pool Authority'}<br/>
+          ${companySettings.phone || ''} | ${companySettings.email || ''}
+        </div>
+      </div>
+    `;
+
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch(`${PAYMENT_SERVER_URL}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customer.email,
+          subject: `Pool Water Test Results - ${new Date().toLocaleDateString()}`,
+          html: emailBody,
+          from: companySettings.email || 'noreply@poolauthority.com'
+        })
+      });
+      
+      if (response.ok) {
+        setEmailNotification({ type: 'success', message: 'Water test results emailed!' });
+        // Save the test
+        saveWaterTest(false);
+      } else {
+        setEmailNotification({ type: 'error', message: 'Failed to send email' });
+      }
+    } catch (err) {
+      setEmailNotification({ type: 'error', message: 'Email error: ' + err.message });
+    }
+    setIsSendingEmail(false);
+    setTimeout(() => setEmailNotification(null), 3000);
   };
 
   // Update route when date changes or employee filter changes
@@ -2588,6 +3120,7 @@ Best regards,
     { key: 'home', label: 'Home', icon: Icons.Home, adminOnly: true },
     { key: 'calendar', label: 'Calendar', icon: Icons.Calendar, adminOnly: false },
     { key: 'routes', label: 'Routes', icon: Icons.Map, adminOnly: false },
+    { key: 'watertest', label: 'Water Test', icon: Icons.Beaker, adminOnly: false },
     { key: 'customers', label: 'Customers', icon: Icons.Users, adminOnly: true },
     { key: 'recurring', label: 'Recurring', icon: Icons.History, adminOnly: true },
     { key: 'jobs', label: 'Jobs', icon: Icons.Wrench, adminOnly: true },
@@ -2809,7 +3342,7 @@ Best regards,
                 <span className="hidden sm:inline">Admin</span>
               </button>
             )}
-            <span className="text-xs text-gray-400 hidden md:block">v2.5.0</span>
+            <span className="text-xs text-gray-400 hidden md:block">v2.8.0</span>
           </div>
         </div>
       </div>
@@ -2846,8 +3379,8 @@ Best regards,
             { key: 'more', label: 'More', icon: Icons.Menu },
           ] : [
             { key: 'routes', label: 'Routes', icon: Icons.Map },
+            { key: 'watertest', label: 'Water Test', icon: Icons.Beaker },
             { key: 'calendar', label: 'Calendar', icon: Icons.Calendar },
-            { key: 'chemicals', label: 'Chemicals', icon: Icons.Beaker },
             { key: 'admin', label: 'Admin', icon: Icons.Settings },
           ]).map(({ key, label, icon: Icon }) => (
             key === 'admin' ? (
@@ -3798,6 +4331,364 @@ Best regards,
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* WATER TEST TAB */}
+        {activeTab === 'watertest' && (
+          <div className="space-y-4">
+            {/* Header Card - Customer & Pool Info */}
+            <div className="bg-gradient-to-r from-blue-900 to-blue-700 rounded-xl p-4 text-white shadow-lg">
+              <h2 className="text-xl font-bold mb-3">💧 Water Chemistry Calculator</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-xs text-blue-200 mb-1">Customer</label>
+                  <select
+                    value={waterTestCustomer}
+                    onChange={(e) => {
+                      setWaterTestCustomer(e.target.value);
+                      const customer = customers.find(c => c.id === parseInt(e.target.value));
+                      if (customer?.poolGallons) setWaterTestPoolGallons(customer.poolGallons);
+                    }}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm"
+                  >
+                    <option value="" className="text-gray-800">-- Select --</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-blue-200 mb-1">Pool Gallons</label>
+                  <input
+                    type="number"
+                    value={waterTestPoolGallons}
+                    onChange={(e) => setWaterTestPoolGallons(parseInt(e.target.value) || 15000)}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-center font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-blue-200 mb-1">Temp °F</label>
+                  <input
+                    type="number"
+                    value={waterTestTemperature}
+                    onChange={(e) => setWaterTestTemperature(parseInt(e.target.value) || 78)}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-center font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-blue-200 mb-1">Chlorine Type</label>
+                  <select
+                    value={waterTestChemicalTypes.chlorine}
+                    onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, chlorine: e.target.value})}
+                    className="w-full px-2 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-xs"
+                  >
+                    <option value="liquid10" className="text-gray-800">Liquid 10%</option>
+                    <option value="liquid12" className="text-gray-800">Liquid 12.5%</option>
+                    <option value="calHypo68" className="text-gray-800">Cal-Hypo 68%</option>
+                    <option value="calHypo73" className="text-gray-800">Cal-Hypo 73%</option>
+                    <option value="dichlor" className="text-gray-800">Dichlor 56%</option>
+                    <option value="trichlor" className="text-gray-800">Trichlor</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* LSI Display - Always Visible */}
+            {(waterTestReadings.pH || waterTestReadings.alkalinity || waterTestReadings.calciumHardness) && (() => {
+              const lsi = calculateLSI();
+              const status = getLSIStatus(lsi);
+              return (
+                <div className={`${status.bgColor} border-2 ${status.borderColor} rounded-xl p-4 shadow-lg`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-700">📐 LSI (Langelier Saturation Index)</h3>
+                      <p className="text-xs text-gray-500">{status.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-4xl font-black" style={{ color: status.color }}>
+                        {lsi >= 0 ? '+' : ''}{lsi.toFixed(2)}
+                      </div>
+                      <div className="text-sm font-bold" style={{ color: status.color }}>{status.text}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-3 bg-gray-200 rounded-full overflow-hidden relative">
+                    <div className="absolute inset-0 flex">
+                      <div className="w-1/4 bg-red-400"></div>
+                      <div className="w-1/4 bg-yellow-400"></div>
+                      <div className="w-1/4 bg-green-400"></div>
+                      <div className="w-1/4 bg-purple-400"></div>
+                    </div>
+                    <div className="absolute top-0 bottom-0 w-1 bg-black rounded" style={{ left: `${Math.max(2, Math.min(98, ((lsi + 0.5) / 1.0) * 100))}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-xs mt-1 text-gray-500">
+                    <span>Corrosive</span>
+                    <span>Balanced</span>
+                    <span>Scaling</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Current Readings - Compact Grid */}
+            <div className="bg-white rounded-xl p-4 shadow-lg">
+              <h3 className="font-bold text-gray-700 mb-3">📊 Current Readings</h3>
+              <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                {[
+                  { key: 'freeChlorine', label: 'FC', unit: 'ppm', target: waterTestTargets.freeChlorine, step: '0.1' },
+                  { key: 'pH', label: 'pH', unit: '', target: waterTestTargets.pH, step: '0.1' },
+                  { key: 'alkalinity', label: 'TA', unit: 'ppm', target: waterTestTargets.alkalinity },
+                  { key: 'cyanuricAcid', label: 'CYA', unit: 'ppm', target: waterTestTargets.cyanuricAcid },
+                  { key: 'calciumHardness', label: 'CH', unit: 'ppm', target: waterTestTargets.calciumHardness },
+                  { key: 'salt', label: 'Salt', unit: 'ppm', target: waterTestTargets.salt },
+                  { key: 'phosphates', label: 'Phos', unit: 'ppb', target: 500 },
+                ].map(({ key, label, unit, target, step }) => (
+                  <div key={key} className="text-center">
+                    <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                    <input
+                      type="number"
+                      step={step || '1'}
+                      value={waterTestReadings[key]}
+                      onChange={(e) => setWaterTestReadings({...waterTestReadings, [key]: e.target.value})}
+                      className="w-full px-1 py-2 border-2 rounded-lg text-center text-lg font-bold focus:border-blue-500 focus:outline-none"
+                      placeholder="-"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">{target}{unit && ` ${unit}`}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Real-Time Dosing Results */}
+            {(() => {
+              const doses = getChemicalDoses();
+              if (doses.length === 0) return null;
+              
+              return (
+                <div className="space-y-3">
+                  <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                    🧪 Chemical Doses Needed
+                    <span className="text-sm font-normal text-gray-500">({waterTestPoolGallons.toLocaleString()} gal)</span>
+                  </h3>
+                  
+                  {doses.map((dose, idx) => {
+                    const bgColors = {
+                      yellow: 'bg-yellow-50 border-yellow-500',
+                      red: 'bg-red-50 border-red-500',
+                      blue: 'bg-blue-50 border-blue-500',
+                      purple: 'bg-purple-50 border-purple-500',
+                      green: 'bg-green-50 border-green-500',
+                      orange: 'bg-orange-50 border-orange-500',
+                      gray: 'bg-gray-50 border-gray-500'
+                    };
+                    
+                    return (
+                      <div key={idx} className={`${bgColors[dose.color] || bgColors.gray} border-l-4 rounded-xl p-4 shadow-sm`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-800">{dose.chemical}</div>
+                            <div className="text-sm text-gray-600">
+                              {dose.label}: {dose.from} → {dose.to} {dose.label === 'pH' ? '' : 'ppm'}
+                            </div>
+                            {dose.warning && <div className="text-xs text-red-600 mt-1">⚠️ {dose.warning}</div>}
+                            {dose.tip && <div className="text-xs text-blue-600 mt-1">💡 {dose.tip}</div>}
+                          </div>
+                          {dose.amount !== null && (
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-2xl font-black text-gray-800">
+                                {dose.amount.toFixed(1)} <span className="text-sm font-medium">{dose.unit}</span>
+                              </div>
+                              <div className="text-sm text-gray-500">({dose.altAmount} {dose.altUnit})</div>
+                              {dose.needed && (
+                                <button
+                                  onClick={() => {
+                                    const existing = chemicalsAdded.find(c => c.id === dose.id);
+                                    if (!existing) {
+                                      setChemicalsAdded([...chemicalsAdded, { ...dose, cost: 0 }]);
+                                    }
+                                  }}
+                                  className={`mt-2 px-3 py-1 text-xs rounded-full ${
+                                    chemicalsAdded.find(c => c.id === dose.id) 
+                                      ? 'bg-green-500 text-white' 
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  {chemicalsAdded.find(c => c.id === dose.id) ? '✓ Added' : '+ Add'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Chemicals Added Section */}
+            {chemicalsAdded.length > 0 && (
+              <div className="bg-white rounded-xl p-4 shadow-lg border-2 border-green-500">
+                <h3 className="font-bold text-gray-700 mb-3">✓ Chemicals Added</h3>
+                <div className="space-y-2">
+                  {chemicalsAdded.map((chem, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                      <div>
+                        <span className="font-medium">{chem.chemical}</span>
+                        <span className="text-gray-500 ml-2">{chem.amount.toFixed(1)} {chem.unit}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={chem.cost || ''}
+                          onChange={(e) => {
+                            const updated = [...chemicalsAdded];
+                            updated[idx].cost = parseFloat(e.target.value) || 0;
+                            setChemicalsAdded(updated);
+                          }}
+                          className="w-20 px-2 py-1 border rounded text-right"
+                          placeholder="0.00"
+                        />
+                        <button
+                          onClick={() => setChemicalsAdded(chemicalsAdded.filter((_, i) => i !== idx))}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Icons.X />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="font-bold">Total:</span>
+                    <span className="text-xl font-bold text-green-600">
+                      ${chemicalsAdded.reduce((sum, c) => sum + (c.cost || 0), 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="bg-white rounded-xl p-4 shadow-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+              <textarea
+                value={waterTestNotes}
+                onChange={(e) => setWaterTestNotes(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                rows="2"
+                placeholder="Pool condition, observations, recommendations..."
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <button
+                onClick={() => {
+                  setWaterTestReadings({ freeChlorine: '', pH: '', alkalinity: '', cyanuricAcid: '', calciumHardness: '', salt: '', phosphates: '' });
+                  setChemicalsAdded([]);
+                  setWaterTestNotes('');
+                  setWaterTestResults(null);
+                }}
+                className="py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300"
+              >
+                Clear All
+              </button>
+              <button
+                onClick={() => saveWaterTest(false)}
+                disabled={!waterTestCustomer}
+                className="py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                💾 Save Test
+              </button>
+              <button
+                onClick={emailWaterTestResults}
+                disabled={!waterTestCustomer || isSendingEmail}
+                className="py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 disabled:bg-gray-400"
+              >
+                {isSendingEmail ? '📧 Sending...' : '📧 Email Results'}
+              </button>
+              <button
+                onClick={() => {
+                  saveWaterTest(true);
+                  alert('Water test saved and chemicals added to billing!');
+                }}
+                disabled={!waterTestCustomer || chemicalsAdded.length === 0}
+                className="py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:bg-gray-400"
+              >
+                💰 Save & Bill
+              </button>
+            </div>
+
+            {/* Chemical Type Settings - Collapsible */}
+            <details className="bg-white rounded-xl shadow-lg">
+              <summary className="p-4 cursor-pointer font-bold text-gray-700">⚙️ Chemical & Target Settings</summary>
+              <div className="p-4 pt-0 border-t space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-600 mb-2">Chemical Types</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">CYA Type</label>
+                      <select
+                        value={waterTestChemicalTypes.cya}
+                        onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, cya: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                      >
+                        <option value="granular">Granular CYA</option>
+                        <option value="liquid">Liquid CYA</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Acid Type</label>
+                      <select
+                        value={waterTestChemicalTypes.acid}
+                        onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, acid: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                      >
+                        <option value="muriatic">Muriatic 31.45%</option>
+                        <option value="dryAcid">Dry Acid</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-600 mb-2">Target Levels</h4>
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    {[
+                      { key: 'freeChlorine', label: 'FC', step: '0.5' },
+                      { key: 'pH', label: 'pH', step: '0.1' },
+                      { key: 'alkalinity', label: 'TA' },
+                      { key: 'cyanuricAcid', label: 'CYA' },
+                      { key: 'calciumHardness', label: 'CH' },
+                      { key: 'salt', label: 'Salt' },
+                    ].map(({ key, label, step }) => (
+                      <div key={key}>
+                        <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                        <input
+                          type="number"
+                          step={step || '1'}
+                          value={waterTestTargets[key]}
+                          onChange={(e) => setWaterTestTargets({...waterTestTargets, [key]: parseFloat(e.target.value) || 0})}
+                          className="w-full px-2 py-2 border rounded-lg text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            {/* Tips Card */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h4 className="font-bold text-gray-700 mb-2">💡 Pro Tips</h4>
+              <ul className="text-sm text-gray-600 space-y-1">
+                <li>• Adjust alkalinity before pH</li>
+                <li>• Add chemicals one at a time, 15-30 min apart</li>
+                <li>• Run pump when adding chemicals</li>
+                <li>• Re-test after 4-6 hours</li>
+              </ul>
+            </div>
           </div>
         )}
 
@@ -8064,7 +8955,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v2.4.0
+        v2.8.0
       </div>
     </div>
   );
