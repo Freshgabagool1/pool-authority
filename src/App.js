@@ -4408,196 +4408,376 @@ Best regards,
         {/* WATER TEST TAB */}
         {activeTab === 'watertest' && (
           <div className="space-y-4">
-            {/* Header Card - Customer & Pool Info */}
-            <div className="bg-gradient-to-r from-blue-900 to-blue-700 rounded-xl p-4 text-white shadow-lg">
-              <h2 className="text-xl font-bold mb-3">💧 Water Chemistry Calculator</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="col-span-2 md:col-span-1">
-                  <label className="block text-xs text-blue-200 mb-1">Customer</label>
-                  <select
-                    value={waterTestCustomer}
-                    onChange={(e) => {
-                      setWaterTestCustomer(e.target.value);
-                      const customer = customers.find(c => c.id === parseInt(e.target.value));
-                      if (customer?.poolGallons) setWaterTestPoolGallons(customer.poolGallons);
-                    }}
-                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm"
-                  >
-                    <option value="" className="text-gray-800">-- Select --</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-blue-200 mb-1">Pool Gallons</label>
-                  <input
-                    type="number"
-                    value={waterTestPoolGallons}
-                    onChange={(e) => setWaterTestPoolGallons(parseInt(e.target.value) || 15000)}
-                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-center font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-blue-200 mb-1">Temp °F</label>
-                  <input
-                    type="number"
-                    value={waterTestTemperature}
-                    onChange={(e) => setWaterTestTemperature(parseInt(e.target.value) || 78)}
-                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-center font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-blue-200 mb-1">Chlorine Type</label>
-                  <select
-                    value={waterTestChemicalTypes.chlorine}
-                    onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, chlorine: e.target.value})}
-                    className="w-full px-2 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-xs"
-                  >
-                    <option value="liquid10" className="text-gray-800">Liquid 10%</option>
-                    <option value="liquid12" className="text-gray-800">Liquid 12.5%</option>
-                    <option value="calHypo68" className="text-gray-800">Cal-Hypo 68%</option>
-                    <option value="calHypo73" className="text-gray-800">Cal-Hypo 73%</option>
-                    <option value="dichlor" className="text-gray-800">Dichlor 56%</option>
-                    <option value="trichlor" className="text-gray-800">Trichlor</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* LSI Display - Always Visible */}
-            {(waterTestReadings.pH || waterTestReadings.alkalinity || waterTestReadings.calciumHardness) && (() => {
-              const lsi = calculateLSI();
-              const status = getLSIStatus(lsi);
-              return (
-                <div className={`${status.bgColor} border-2 ${status.borderColor} rounded-xl p-4 shadow-lg`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-gray-700">📐 LSI (Langelier Saturation Index)</h3>
-                      <p className="text-xs text-gray-500">{status.description}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-4xl font-black" style={{ color: status.color }}>
-                        {lsi >= 0 ? '+' : ''}{lsi.toFixed(2)}
-                      </div>
-                      <div className="text-sm font-bold" style={{ color: status.color }}>{status.text}</div>
-                    </div>
+            {/* Main Water Test Card - Compact Orenda-Style */}
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              {/* Header with Customer & Pool Info */}
+              <div className="bg-gradient-to-r from-cyan-600 to-blue-600 p-4 text-white">
+                <h2 className="text-lg font-bold mb-3">💧 Water Test & Dosing Calculator</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-xs text-cyan-100 mb-1">Customer</label>
+                    <select
+                      value={waterTestCustomer}
+                      onChange={(e) => {
+                        setWaterTestCustomer(e.target.value);
+                        const customer = customers.find(c => c.id === parseInt(e.target.value));
+                        if (customer?.poolGallons) setWaterTestPoolGallons(customer.poolGallons);
+                      }}
+                      className="w-full px-2 py-1.5 bg-white/20 border border-white/30 rounded text-white text-sm"
+                    >
+                      <option value="" className="text-gray-800">-- Select --</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="mt-3 h-3 bg-gray-200 rounded-full overflow-hidden relative">
-                    <div className="absolute inset-0 flex">
-                      <div className="w-1/4 bg-red-400"></div>
-                      <div className="w-1/4 bg-yellow-400"></div>
-                      <div className="w-1/4 bg-green-400"></div>
-                      <div className="w-1/4 bg-purple-400"></div>
-                    </div>
-                    <div className="absolute top-0 bottom-0 w-1 bg-black rounded" style={{ left: `${Math.max(2, Math.min(98, ((lsi + 0.5) / 1.0) * 100))}%` }}></div>
-                  </div>
-                  <div className="flex justify-between text-xs mt-1 text-gray-500">
-                    <span>Corrosive</span>
-                    <span>Balanced</span>
-                    <span>Scaling</span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Current Readings - Compact Grid */}
-            <div className="bg-white rounded-xl p-4 shadow-lg">
-              <h3 className="font-bold text-gray-700 mb-3">📊 Current Readings</h3>
-              <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                {[
-                  { key: 'freeChlorine', label: 'FC', unit: 'ppm', target: waterTestTargets.freeChlorine, step: '0.1' },
-                  { key: 'pH', label: 'pH', unit: '', target: waterTestTargets.pH, step: '0.1' },
-                  { key: 'alkalinity', label: 'TA', unit: 'ppm', target: waterTestTargets.alkalinity },
-                  { key: 'cyanuricAcid', label: 'CYA', unit: 'ppm', target: waterTestTargets.cyanuricAcid },
-                  { key: 'calciumHardness', label: 'CH', unit: 'ppm', target: waterTestTargets.calciumHardness },
-                  { key: 'salt', label: 'Salt', unit: 'ppm', target: waterTestTargets.salt },
-                  { key: 'phosphates', label: 'Phos', unit: 'ppb', target: 500 },
-                ].map(({ key, label, unit, target, step }) => (
-                  <div key={key} className="text-center">
-                    <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                  <div>
+                    <label className="block text-xs text-cyan-100 mb-1">Pool Gallons</label>
                     <input
                       type="number"
-                      step={step || '1'}
-                      value={waterTestReadings[key]}
-                      onChange={(e) => setWaterTestReadings({...waterTestReadings, [key]: e.target.value})}
-                      className="w-full px-1 py-2 border-2 rounded-lg text-center text-lg font-bold focus:border-blue-500 focus:outline-none"
-                      placeholder="-"
+                      value={waterTestPoolGallons}
+                      onChange={(e) => setWaterTestPoolGallons(parseInt(e.target.value) || 15000)}
+                      className="w-full px-2 py-1.5 bg-white/20 border border-white/30 rounded text-white text-center font-bold text-sm"
                     />
-                    <div className="text-xs text-gray-400 mt-1">{target}{unit && ` ${unit}`}</div>
                   </div>
-                ))}
+                  <div>
+                    <label className="block text-xs text-cyan-100 mb-1">🌡️ Temp °F</label>
+                    <input
+                      type="number"
+                      value={waterTestTemperature}
+                      onChange={(e) => setWaterTestTemperature(parseInt(e.target.value) || 78)}
+                      className="w-full px-2 py-1.5 bg-orange-400/30 border border-orange-300/50 rounded text-white text-center font-bold text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-cyan-100 mb-1">Chlorine Type</label>
+                    <select
+                      value={waterTestChemicalTypes.chlorine}
+                      onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, chlorine: e.target.value})}
+                      className="w-full px-2 py-1.5 bg-white/20 border border-white/30 rounded text-white text-xs"
+                    >
+                      <option value="liquid12" className="text-gray-800">Liquid 12.5%</option>
+                      <option value="liquid10" className="text-gray-800">Liquid 10%</option>
+                      <option value="calHypo68" className="text-gray-800">Cal-Hypo 68%</option>
+                      <option value="calHypo73" className="text-gray-800">Cal-Hypo 73%</option>
+                      <option value="dichlor" className="text-gray-800">Dichlor 56%</option>
+                      <option value="trichlor" className="text-gray-800">Trichlor</option>
+                    </select>
+                  </div>
+                </div>
+                {/* Acid Type inline */}
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="text-xs text-cyan-100">Acid:</label>
+                  <select
+                    value={waterTestChemicalTypes.acid}
+                    onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, acid: e.target.value})}
+                    className="px-2 py-1 bg-white/20 border border-white/30 rounded text-white text-xs"
+                  >
+                    <option value="muriatic" className="text-gray-800">Muriatic</option>
+                    <option value="dryAcid" className="text-gray-800">Dry Acid</option>
+                  </select>
+                  <label className="text-xs text-cyan-100 ml-4">CYA:</label>
+                  <select
+                    value={waterTestChemicalTypes.cya}
+                    onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, cya: e.target.value})}
+                    className="px-2 py-1 bg-white/20 border border-white/30 rounded text-white text-xs"
+                  >
+                    <option value="granular" className="text-gray-800">Granular</option>
+                    <option value="liquid" className="text-gray-800">Liquid</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Water Test Grid - Current vs Target */}
+              <div className="p-4 bg-cyan-50">
+                {/* Headers */}
+                <div className="grid grid-cols-3 gap-1 mb-2 text-xs text-center font-bold">
+                  <div></div>
+                  <div className="text-blue-700 bg-blue-100 rounded py-1">CURRENT</div>
+                  <div className="text-green-700 bg-green-100 rounded py-1">TARGET</div>
+                </div>
+                
+                {/* Reading Rows */}
+                <div className="space-y-1">
+                  {[
+                    { key: 'freeChlorine', targetKey: 'freeChlorine', label: 'Free Chlorine (FC)', unit: 'ppm', step: '0.1' },
+                    { key: 'pH', targetKey: 'pH', label: 'pH', unit: '', step: '0.1' },
+                    { key: 'alkalinity', targetKey: 'alkalinity', label: 'Total Alkalinity (TA)', unit: 'ppm' },
+                    { key: 'cyanuricAcid', targetKey: 'cyanuricAcid', label: 'Cyanuric Acid (CYA)', unit: 'ppm' },
+                    { key: 'calciumHardness', targetKey: 'calciumHardness', label: 'Calcium Hardness (CH)', unit: 'ppm' },
+                    { key: 'salt', targetKey: 'salt', label: 'Salt', unit: 'ppm' },
+                    { key: 'phosphates', targetKey: null, label: 'Phosphates', unit: 'ppb' },
+                  ].map(({ key, targetKey, label, unit, step }) => (
+                    <div key={key} className="grid grid-cols-3 gap-1 items-center">
+                      <label className="text-xs text-gray-600 truncate pr-1">{label}</label>
+                      <input
+                        type="number"
+                        step={step || '1'}
+                        value={waterTestReadings[key]}
+                        onChange={(e) => setWaterTestReadings({...waterTestReadings, [key]: e.target.value})}
+                        className="px-2 py-1.5 border rounded text-center font-bold text-sm bg-blue-50 focus:bg-blue-100 focus:border-blue-500 focus:outline-none"
+                        placeholder="-"
+                      />
+                      {targetKey ? (
+                        <input
+                          type="number"
+                          step={step || '1'}
+                          value={waterTestTargets[targetKey]}
+                          onChange={(e) => setWaterTestTargets({...waterTestTargets, [targetKey]: parseFloat(e.target.value) || 0})}
+                          className="px-2 py-1.5 border rounded text-center font-bold text-sm bg-green-50 focus:bg-green-100 focus:border-green-500 focus:outline-none"
+                        />
+                      ) : (
+                        <div className="px-2 py-1.5 text-center text-xs text-gray-400">< 500</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* LSI Display - Current vs Target */}
+                {(() => {
+                  const calcLSI = (ph, temp, calcium, alk, cya, salt) => {
+                    if (!ph || !alk) return null;
+                    const tempTable = [{t:32,f:0.0},{t:37,f:0.1},{t:46,f:0.2},{t:53,f:0.3},{t:60,f:0.4},{t:66,f:0.5},{t:76,f:0.6},{t:84,f:0.7},{t:94,f:0.8},{t:105,f:0.9}];
+                    let TF = 0.6;
+                    for (let i = 0; i < tempTable.length - 1; i++) {
+                      if (temp >= tempTable[i].t && temp <= tempTable[i+1].t) {
+                        TF = tempTable[i].f + ((temp - tempTable[i].t) / (tempTable[i+1].t - tempTable[i].t)) * (tempTable[i+1].f - tempTable[i].f);
+                        break;
+                      }
+                    }
+                    const calcTable = [{c:25,f:1.0},{c:50,f:1.3},{c:75,f:1.5},{c:100,f:1.6},{c:150,f:1.8},{c:200,f:1.9},{c:300,f:2.1},{c:400,f:2.2},{c:800,f:2.5}];
+                    let CF = 1.9;
+                    for (let i = 0; i < calcTable.length - 1; i++) {
+                      if (calcium >= calcTable[i].c && calcium <= calcTable[i+1].c) {
+                        CF = calcTable[i].f + ((calcium - calcTable[i].c) / (calcTable[i+1].c - calcTable[i].c)) * (calcTable[i+1].f - calcTable[i].f);
+                        break;
+                      }
+                    }
+                    const cyaCorr = ph <= 7.2 ? 0.31 : ph <= 7.6 ? 0.33 : 0.35;
+                    const carbAlk = Math.max(alk - ((cya || 0) * cyaCorr), 10);
+                    const alkTable = [{a:25,f:1.4},{a:50,f:1.7},{a:75,f:1.9},{a:100,f:2.0},{a:150,f:2.2},{a:200,f:2.3},{a:300,f:2.5},{a:400,f:2.6}];
+                    let AF = 2.0;
+                    for (let i = 0; i < alkTable.length - 1; i++) {
+                      if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i+1].a) {
+                        AF = alkTable[i].f + ((carbAlk - alkTable[i].a) / (alkTable[i+1].a - alkTable[i].a)) * (alkTable[i+1].f - alkTable[i].f);
+                        break;
+                      }
+                    }
+                    const tds = 1000 + (salt || 0);
+                    const TDSF = tds < 1000 ? 12.0 : tds < 2000 ? 12.1 : tds < 4000 ? 12.2 : 12.3;
+                    return ph + TF + CF + AF - TDSF;
+                  };
+                  
+                  const temp = waterTestTemperature || 78;
+                  const currentLSI = calcLSI(
+                    parseFloat(waterTestReadings.pH) || 0,
+                    temp,
+                    parseFloat(waterTestReadings.calciumHardness) || 250,
+                    parseFloat(waterTestReadings.alkalinity) || 0,
+                    parseFloat(waterTestReadings.cyanuricAcid) || 0,
+                    parseFloat(waterTestReadings.salt) || 0
+                  );
+                  const targetLSI = calcLSI(
+                    waterTestTargets.pH || 7.5,
+                    temp,
+                    waterTestTargets.calciumHardness || 300,
+                    waterTestTargets.alkalinity || 100,
+                    waterTestTargets.cyanuricAcid || 40,
+                    waterTestTargets.salt || 0
+                  );
+                  
+                  const getColor = (lsi) => {
+                    if (lsi === null) return '#9ca3af';
+                    if (lsi >= 0.31) return '#a855f7';
+                    if (lsi >= 0) return '#22c55e';
+                    if (lsi >= -0.30) return '#eab308';
+                    return '#ef4444';
+                  };
+                  const getText = (lsi) => {
+                    if (lsi === null) return '--';
+                    if (lsi >= 0.31) return 'SCALING';
+                    if (lsi >= 0) return 'BALANCED';
+                    if (lsi >= -0.30) return 'OK';
+                    return 'CORROSIVE';
+                  };
+                  
+                  const showLSI = waterTestReadings.pH && waterTestReadings.alkalinity;
+                  
+                  return showLSI ? (
+                    <div className="grid grid-cols-2 gap-3 mt-3 p-3 bg-white rounded-lg border">
+                      <div className="text-center">
+                        <div className="text-xs text-gray-500 mb-1">Current LSI</div>
+                        <div className="text-2xl font-black" style={{color: getColor(currentLSI)}}>
+                          {currentLSI !== null ? `${currentLSI >= 0 ? '+' : ''}${currentLSI.toFixed(2)}` : '--'}
+                        </div>
+                        <div className="text-xs font-bold" style={{color: getColor(currentLSI)}}>{getText(currentLSI)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-gray-500 mb-1">Target LSI</div>
+                        <div className="text-2xl font-black" style={{color: getColor(targetLSI)}}>
+                          {targetLSI !== null ? `${targetLSI >= 0 ? '+' : ''}${targetLSI.toFixed(2)}` : '--'}
+                        </div>
+                        <div className="text-xs font-bold" style={{color: getColor(targetLSI)}}>{getText(targetLSI)}</div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Real-Time Dosing Recommendations */}
+                {(() => {
+                  const recs = [];
+                  const gallons = waterTestPoolGallons || 15000;
+                  const factor = gallons / 10000;
+                  const toQtrGal = (floz) => (Math.round((floz / 128) * 4) / 4);
+                  
+                  // Chlorine
+                  const fcCurr = parseFloat(waterTestReadings.freeChlorine) || 0;
+                  const fcTarg = waterTestTargets.freeChlorine || 3;
+                  if (fcCurr > 0 && fcTarg > fcCurr) {
+                    const ppm = fcTarg - fcCurr;
+                    const rates = {
+                      liquid12: {r:10.7, liq:true, n:'Liquid 12.5%'},
+                      liquid10: {r:12.8, liq:true, n:'Liquid 10%'},
+                      calHypo68: {r:1.95, liq:false, n:'Cal-Hypo 68%'},
+                      calHypo73: {r:1.8, liq:false, n:'Cal-Hypo 73%'},
+                      dichlor: {r:2.1, liq:false, n:'Dichlor'},
+                      trichlor: {r:1.5, liq:false, n:'Trichlor'}
+                    };
+                    const c = rates[waterTestChemicalTypes.chlorine] || rates.liquid12;
+                    if (c.liq) {
+                      recs.push({chem: c.n, amount: `${toQtrGal(ppm * c.r * factor).toFixed(2)} gal`, color: 'yellow'});
+                    } else {
+                      recs.push({chem: c.n, amount: `${(ppm * c.r * factor / 16).toFixed(1)} lbs`, color: 'yellow'});
+                    }
+                  }
+                  
+                  // pH
+                  const phCurr = parseFloat(waterTestReadings.pH) || 0;
+                  const phTarg = waterTestTargets.pH || 7.5;
+                  if (phCurr > 0 && phCurr > phTarg + 0.1) {
+                    const drop = phCurr - phTarg;
+                    if (waterTestChemicalTypes.acid === 'muriatic') {
+                      recs.push({chem: 'Muriatic Acid', amount: `${toQtrGal((drop / 0.2) * 14 * factor).toFixed(2)} gal`, color: 'red'});
+                    } else {
+                      recs.push({chem: 'Dry Acid', amount: `${((drop / 0.2) * 6 * factor / 16).toFixed(1)} lbs`, color: 'red'});
+                    }
+                  } else if (phCurr > 0 && phTarg > phCurr + 0.1) {
+                    recs.push({chem: 'Soda Ash', amount: `${(((phTarg - phCurr) / 0.2) * 6 * factor / 16).toFixed(1)} lbs`, color: 'blue'});
+                  }
+                  
+                  // Alkalinity
+                  const taCurr = parseFloat(waterTestReadings.alkalinity) || 0;
+                  const taTarg = waterTestTargets.alkalinity || 100;
+                  if (taCurr > 0 && taTarg > taCurr + 5) {
+                    recs.push({chem: 'Bicarb', amount: `${(((taTarg - taCurr) / 10) * 1.4 * factor).toFixed(1)} lbs`, color: 'blue'});
+                  }
+                  
+                  // CYA
+                  const cyaCurr = parseFloat(waterTestReadings.cyanuricAcid) || 0;
+                  const cyaTarg = waterTestTargets.cyanuricAcid || 40;
+                  if (cyaCurr >= 0 && cyaTarg > cyaCurr + 5) {
+                    recs.push({chem: 'Stabilizer (CYA)', amount: `${(((cyaTarg - cyaCurr) / 10) * 13 * factor / 16).toFixed(1)} lbs`, color: 'purple'});
+                  }
+                  
+                  // Calcium
+                  const chCurr = parseFloat(waterTestReadings.calciumHardness) || 0;
+                  const chTarg = waterTestTargets.calciumHardness || 300;
+                  if (chCurr > 0 && chTarg > chCurr + 20) {
+                    recs.push({chem: 'Calcium Chloride', amount: `${(((chTarg - chCurr) / 10) * 1.2 * factor).toFixed(1)} lbs`, color: 'blue'});
+                  }
+                  
+                  // Salt
+                  const saltCurr = parseFloat(waterTestReadings.salt) || 0;
+                  const saltTarg = waterTestTargets.salt || 3200;
+                  if (saltCurr > 0 && saltTarg > saltCurr + 100) {
+                    recs.push({chem: 'Pool Salt', amount: `${Math.round(((saltTarg - saltCurr) / 1000) * 83 * factor)} lbs`, color: 'blue'});
+                  }
+                  
+                  // Phosphates
+                  if ((parseFloat(waterTestReadings.phosphates) || 0) > 500) {
+                    recs.push({chem: 'Phos Remover', amount: 'Treat', color: 'green'});
+                  }
+                  
+                  if (recs.length === 0) return null;
+                  
+                  return (
+                    <div className="mt-3 p-3 bg-white rounded-lg border">
+                      <div className="text-xs font-bold text-gray-700 mb-2">📋 Dosing to Reach Targets ({gallons.toLocaleString()} gal):</div>
+                      <div className="space-y-1">
+                        {recs.map((r, i) => {
+                          const colors = {
+                            yellow: 'bg-yellow-100 text-yellow-800',
+                            red: 'bg-red-100 text-red-800',
+                            blue: 'bg-blue-100 text-blue-800',
+                            purple: 'bg-purple-100 text-purple-800',
+                            green: 'bg-green-100 text-green-800'
+                          };
+                          return (
+                            <div key={i} className={`flex justify-between items-center px-3 py-2 rounded ${colors[r.color]}`}>
+                              <span className="font-medium text-sm">{r.chem}</span>
+                              <span className="font-bold">{r.amount}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Notes */}
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-600 mb-1">Notes</label>
+                  <textarea
+                    value={waterTestNotes}
+                    onChange={(e) => setWaterTestNotes(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                    rows="2"
+                    placeholder="Pool condition, observations, recommendations..."
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-4 bg-gray-50 border-t grid grid-cols-2 md:grid-cols-4 gap-2">
+                <button
+                  onClick={() => {
+                    setWaterTestReadings({ freeChlorine: '', pH: '', alkalinity: '', cyanuricAcid: '', calciumHardness: '', salt: '', phosphates: '' });
+                    setChemicalsAdded([]);
+                    setWaterTestNotes('');
+                    setWaterTestResults(null);
+                  }}
+                  className="py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 text-sm"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => saveWaterTest(false)}
+                  disabled={!waterTestCustomer}
+                  className="py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 text-sm"
+                >
+                  💾 Save
+                </button>
+                <button
+                  onClick={emailWaterTestResults}
+                  disabled={!waterTestCustomer || isSendingEmail}
+                  className="py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-400 text-sm"
+                >
+                  {isSendingEmail ? '📧...' : '📧 Email'}
+                </button>
+                <button
+                  onClick={() => {
+                    saveWaterTest(true);
+                    showEmailNotification('success', 'Water test saved and chemicals added to billing!');
+                  }}
+                  disabled={!waterTestCustomer}
+                  className="py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-400 text-sm"
+                >
+                  💰 Save & Bill
+                </button>
               </div>
             </div>
 
-            {/* Real-Time Dosing Results */}
-            {(() => {
-              const doses = getChemicalDoses();
-              if (doses.length === 0) return null;
-              
-              return (
-                <div className="space-y-3">
-                  <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                    🧪 Chemical Doses Needed
-                    <span className="text-sm font-normal text-gray-500">({waterTestPoolGallons.toLocaleString()} gal)</span>
-                  </h3>
-                  
-                  {doses.map((dose, idx) => {
-                    const bgColors = {
-                      yellow: 'bg-yellow-50 border-yellow-500',
-                      red: 'bg-red-50 border-red-500',
-                      blue: 'bg-blue-50 border-blue-500',
-                      purple: 'bg-purple-50 border-purple-500',
-                      green: 'bg-green-50 border-green-500',
-                      orange: 'bg-orange-50 border-orange-500',
-                      gray: 'bg-gray-50 border-gray-500'
-                    };
-                    
-                    return (
-                      <div key={idx} className={`${bgColors[dose.color] || bgColors.gray} border-l-4 rounded-xl p-4 shadow-sm`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="font-bold text-gray-800">{dose.chemical}</div>
-                            <div className="text-sm text-gray-600">
-                              {dose.label}: {dose.from} → {dose.to} {dose.label === 'pH' ? '' : 'ppm'}
-                            </div>
-                            {dose.warning && <div className="text-xs text-red-600 mt-1">⚠️ {dose.warning}</div>}
-                            {dose.tip && <div className="text-xs text-blue-600 mt-1">💡 {dose.tip}</div>}
-                          </div>
-                          {dose.amount !== null && (
-                            <div className="text-right flex-shrink-0">
-                              <div className="text-2xl font-black text-gray-800">
-                                {dose.amount.toFixed(1)} <span className="text-sm font-medium">{dose.unit}</span>
-                              </div>
-                              <div className="text-sm text-gray-500">({dose.altAmount} {dose.altUnit})</div>
-                              {dose.needed && (
-                                <button
-                                  onClick={() => {
-                                    const existing = chemicalsAdded.find(c => c.id === dose.id);
-                                    if (!existing) {
-                                      setChemicalsAdded([...chemicalsAdded, { ...dose, cost: 0 }]);
-                                    }
-                                  }}
-                                  className={`mt-2 px-3 py-1 text-xs rounded-full ${
-                                    chemicalsAdded.find(c => c.id === dose.id) 
-                                      ? 'bg-green-500 text-white' 
-                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  }`}
-                                >
-                                  {chemicalsAdded.find(c => c.id === dose.id) ? '✓ Added' : '+ Add'}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-
-            {/* Chemicals Added Section */}
+            {/* Chemicals Added Section - Only show if there are chemicals */}
             {chemicalsAdded.length > 0 && (
               <div className="bg-white rounded-xl p-4 shadow-lg border-2 border-green-500">
                 <h3 className="font-bold text-gray-700 mb-3">✓ Chemicals Added</h3>
@@ -4606,7 +4786,7 @@ Best regards,
                     <div key={idx} className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
                       <div>
                         <span className="font-medium">{chem.chemical}</span>
-                        <span className="text-gray-500 ml-2">{chem.amount.toFixed(1)} {chem.unit}</span>
+                        <span className="text-gray-500 ml-2">{chem.amount?.toFixed?.(1) || chem.amount} {chem.unit}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-500">$</span>
@@ -4641,125 +4821,24 @@ Best regards,
               </div>
             )}
 
-            {/* Notes */}
-            <div className="bg-white rounded-xl p-4 shadow-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-              <textarea
-                value={waterTestNotes}
-                onChange={(e) => setWaterTestNotes(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
-                rows="2"
-                placeholder="Pool condition, observations, recommendations..."
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <button
-                onClick={() => {
-                  setWaterTestReadings({ freeChlorine: '', pH: '', alkalinity: '', cyanuricAcid: '', calciumHardness: '', salt: '', phosphates: '' });
-                  setChemicalsAdded([]);
-                  setWaterTestNotes('');
-                  setWaterTestResults(null);
-                }}
-                className="py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300"
-              >
-                Clear All
-              </button>
-              <button
-                onClick={() => saveWaterTest(false)}
-                disabled={!waterTestCustomer}
-                className="py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                💾 Save Test
-              </button>
-              <button
-                onClick={emailWaterTestResults}
-                disabled={!waterTestCustomer || isSendingEmail}
-                className="py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 disabled:bg-gray-400"
-              >
-                {isSendingEmail ? '📧 Sending...' : '📧 Email Results'}
-              </button>
-              <button
-                onClick={() => {
-                  saveWaterTest(true);
-                  alert('Water test saved and chemicals added to billing!');
-                }}
-                disabled={!waterTestCustomer || chemicalsAdded.length === 0}
-                className="py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:bg-gray-400"
-              >
-                💰 Save & Bill
-              </button>
-            </div>
-
-            {/* Chemical Type Settings - Collapsible */}
-            <details className="bg-white rounded-xl shadow-lg">
-              <summary className="p-4 cursor-pointer font-bold text-gray-700">⚙️ Chemical & Target Settings</summary>
-              <div className="p-4 pt-0 border-t space-y-4">
-                <div>
-                  <h4 className="font-medium text-gray-600 mb-2">Chemical Types</h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">CYA Type</label>
-                      <select
-                        value={waterTestChemicalTypes.cya}
-                        onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, cya: e.target.value})}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      >
-                        <option value="granular">Granular CYA</option>
-                        <option value="liquid">Liquid CYA</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Acid Type</label>
-                      <select
-                        value={waterTestChemicalTypes.acid}
-                        onChange={(e) => setWaterTestChemicalTypes({...waterTestChemicalTypes, acid: e.target.value})}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      >
-                        <option value="muriatic">Muriatic 31.45%</option>
-                        <option value="dryAcid">Dry Acid</option>
-                      </select>
-                    </div>
-                  </div>
+            {/* Quick Tips - Collapsible */}
+            <details className="bg-gray-50 rounded-xl">
+              <summary className="p-3 cursor-pointer font-medium text-gray-700 text-sm">💡 Pro Tips & LSI Guide</summary>
+              <div className="px-3 pb-3 text-sm text-gray-600 space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-red-100 p-2 rounded"><strong>LSI &lt; -0.3:</strong> Corrosive</div>
+                  <div className="bg-yellow-100 p-2 rounded"><strong>LSI -0.3 to 0:</strong> Acceptable</div>
+                  <div className="bg-green-100 p-2 rounded"><strong>LSI 0 to +0.3:</strong> Balanced ✓</div>
+                  <div className="bg-purple-100 p-2 rounded"><strong>LSI &gt; +0.3:</strong> Scaling</div>
                 </div>
-                <div>
-                  <h4 className="font-medium text-gray-600 mb-2">Target Levels</h4>
-                  <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                    {[
-                      { key: 'freeChlorine', label: 'FC', step: '0.5' },
-                      { key: 'pH', label: 'pH', step: '0.1' },
-                      { key: 'alkalinity', label: 'TA' },
-                      { key: 'cyanuricAcid', label: 'CYA' },
-                      { key: 'calciumHardness', label: 'CH' },
-                      { key: 'salt', label: 'Salt' },
-                    ].map(({ key, label, step }) => (
-                      <div key={key}>
-                        <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                        <input
-                          type="number"
-                          step={step || '1'}
-                          value={waterTestTargets[key]}
-                          onChange={(e) => setWaterTestTargets({...waterTestTargets, [key]: parseFloat(e.target.value) || 0})}
-                          className="w-full px-2 py-2 border rounded-lg text-center"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ul className="space-y-1 mt-2">
+                  <li>• Adjust alkalinity before pH</li>
+                  <li>• Add chemicals one at a time, 15-30 min apart</li>
+                  <li>• Run pump when adding chemicals</li>
+                  <li>• Re-test after 4-6 hours</li>
+                </ul>
               </div>
             </details>
-
-            {/* Tips Card */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <h4 className="font-bold text-gray-700 mb-2">💡 Pro Tips</h4>
-              <ul className="text-sm text-gray-600 space-y-1">
-                <li>• Adjust alkalinity before pH</li>
-                <li>• Add chemicals one at a time, 15-30 min apart</li>
-                <li>• Run pump when adding chemicals</li>
-                <li>• Re-test after 4-6 hours</li>
-              </ul>
-            </div>
           </div>
         )}
 
@@ -9256,7 +9335,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.4.0
+        v3.5.0
       </div>
     </div>
   );
