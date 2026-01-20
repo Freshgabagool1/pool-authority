@@ -4527,7 +4527,7 @@ Best regards,
                           className="px-2 py-1.5 border rounded text-center font-bold text-sm bg-green-50 focus:bg-green-100 focus:border-green-500 focus:outline-none"
                         />
                       ) : (
-                        <div className="px-2 py-1.5 text-center text-xs text-gray-400">< 500</div>
+                        <div className="px-2 py-1.5 text-center text-xs text-gray-400">&lt; 500</div>
                       )}
                     </div>
                   ))}
