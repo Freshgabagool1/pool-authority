@@ -4623,103 +4623,201 @@ Best regards,
                   ) : null;
                 })()}
 
-                {/* Real-Time Dosing Recommendations */}
+                {/* Real-Time Dosing Recommendations - Orenda Style with Multiple Options */}
                 {(() => {
-                  const recs = [];
                   const gallons = waterTestPoolGallons || 15000;
                   const factor = gallons / 10000;
-                  const toQtrGal = (floz) => (Math.round((floz / 128) * 4) / 4);
                   
-                  // Chlorine
+                  // Helper functions for display
+                  const formatFlOz = (oz) => {
+                    if (oz >= 128) return `${(oz / 128).toFixed(2)} gal`;
+                    if (oz >= 32) return `${(oz / 32).toFixed(1)} qt`;
+                    return `${oz.toFixed(1)} fl oz`;
+                  };
+                  const formatOz = (oz) => {
+                    if (oz >= 16) return `${(oz / 16).toFixed(2)} lbs`;
+                    return `${oz.toFixed(1)} oz`;
+                  };
+                  
+                  const dosingSections = [];
+                  
+                  // CHLORINE - Show multiple options
                   const fcCurr = parseFloat(waterTestReadings.freeChlorine) || 0;
                   const fcTarg = waterTestTargets.freeChlorine || 3;
                   if (fcCurr > 0 && fcTarg > fcCurr) {
-                    const ppm = fcTarg - fcCurr;
-                    const rates = {
-                      liquid12: {r:10.7, liq:true, n:'Liquid 12.5%'},
-                      liquid10: {r:12.8, liq:true, n:'Liquid 10%'},
-                      calHypo68: {r:1.95, liq:false, n:'Cal-Hypo 68%'},
-                      calHypo73: {r:1.8, liq:false, n:'Cal-Hypo 73%'},
-                      dichlor: {r:2.1, liq:false, n:'Dichlor'},
-                      trichlor: {r:1.5, liq:false, n:'Trichlor'}
-                    };
-                    const c = rates[waterTestChemicalTypes.chlorine] || rates.liquid12;
-                    if (c.liq) {
-                      recs.push({chem: c.n, amount: `${toQtrGal(ppm * c.r * factor).toFixed(2)} gal`, color: 'yellow'});
-                    } else {
-                      recs.push({chem: c.n, amount: `${(ppm * c.r * factor / 16).toFixed(1)} lbs`, color: 'yellow'});
-                    }
+                    const ppmNeeded = fcTarg - fcCurr;
+                    // Rates: fl oz or oz per 1 ppm per 10,000 gal
+                    const chlorineOptions = [
+                      { name: 'Liquid Chlorine 12.5%', rate: 10.7, isLiquid: true, selected: waterTestChemicalTypes.chlorine === 'liquid12' },
+                      { name: 'Liquid Chlorine 10%', rate: 12.8, isLiquid: true, selected: waterTestChemicalTypes.chlorine === 'liquid10' },
+                      { name: 'Cal-Hypo 73%', rate: 2.0, isLiquid: false, selected: waterTestChemicalTypes.chlorine === 'calHypo73' },
+                      { name: 'Cal-Hypo 68%', rate: 2.1, isLiquid: false, selected: waterTestChemicalTypes.chlorine === 'calHypo68' },
+                      { name: 'Dichlor 56%', rate: 2.1, isLiquid: false, selected: waterTestChemicalTypes.chlorine === 'dichlor' },
+                      { name: 'Trichlor 90%', rate: 1.3, isLiquid: false, selected: waterTestChemicalTypes.chlorine === 'trichlor' },
+                    ];
+                    dosingSections.push({
+                      title: `Raise Chlorine: ${fcCurr} → ${fcTarg} ppm (+${ppmNeeded.toFixed(1)})`,
+                      color: 'yellow',
+                      options: chlorineOptions.map(opt => ({
+                        ...opt,
+                        amount: opt.isLiquid ? formatFlOz(ppmNeeded * opt.rate * factor) : formatOz(ppmNeeded * opt.rate * factor)
+                      }))
+                    });
                   }
                   
-                  // pH
+                  // pH DOWN - Show acid options
                   const phCurr = parseFloat(waterTestReadings.pH) || 0;
                   const phTarg = waterTestTargets.pH || 7.5;
-                  if (phCurr > 0 && phCurr > phTarg + 0.1) {
-                    const drop = phCurr - phTarg;
-                    if (waterTestChemicalTypes.acid === 'muriatic') {
-                      recs.push({chem: 'Muriatic Acid', amount: `${toQtrGal((drop / 0.2) * 14 * factor).toFixed(2)} gal`, color: 'red'});
-                    } else {
-                      recs.push({chem: 'Dry Acid', amount: `${((drop / 0.2) * 6 * factor / 16).toFixed(1)} lbs`, color: 'red'});
-                    }
-                  } else if (phCurr > 0 && phTarg > phCurr + 0.1) {
-                    recs.push({chem: 'Soda Ash', amount: `${(((phTarg - phCurr) / 0.2) * 6 * factor / 16).toFixed(1)} lbs`, color: 'blue'});
+                  if (phCurr > 0 && phCurr > phTarg + 0.05) {
+                    const phDrop = phCurr - phTarg;
+                    // Muriatic: ~25.6 fl oz per 10 ppm TA drop, or ~16 fl oz per 0.2 pH drop
+                    // Dry Acid: ~2.1 lbs (33.6 oz) per 10 ppm TA drop
+                    const acidOptions = [
+                      { name: 'Muriatic Acid 31.45%', rate: 16, isLiquid: true, selected: waterTestChemicalTypes.acid === 'muriatic' },
+                      { name: 'Dry Acid (Sodium Bisulfate)', rate: 12, isLiquid: false, selected: waterTestChemicalTypes.acid === 'dryAcid' },
+                    ];
+                    dosingSections.push({
+                      title: `Lower pH: ${phCurr.toFixed(1)} → ${phTarg.toFixed(1)} (-${phDrop.toFixed(2)})`,
+                      color: 'red',
+                      options: acidOptions.map(opt => ({
+                        ...opt,
+                        amount: opt.isLiquid 
+                          ? formatFlOz((phDrop / 0.2) * opt.rate * factor)
+                          : formatOz((phDrop / 0.2) * opt.rate * factor)
+                      }))
+                    });
                   }
                   
-                  // Alkalinity
+                  // pH UP
+                  if (phCurr > 0 && phTarg > phCurr + 0.05) {
+                    const phRaise = phTarg - phCurr;
+                    // Soda Ash: 6 oz per 0.2 pH per 10k gal
+                    dosingSections.push({
+                      title: `Raise pH: ${phCurr.toFixed(1)} → ${phTarg.toFixed(1)} (+${phRaise.toFixed(2)})`,
+                      color: 'blue',
+                      options: [
+                        { name: 'Soda Ash', amount: formatOz((phRaise / 0.2) * 6 * factor), selected: true }
+                      ]
+                    });
+                  }
+                  
+                  // ALKALINITY UP
                   const taCurr = parseFloat(waterTestReadings.alkalinity) || 0;
                   const taTarg = waterTestTargets.alkalinity || 100;
                   if (taCurr > 0 && taTarg > taCurr + 5) {
-                    recs.push({chem: 'Bicarb', amount: `${(((taTarg - taCurr) / 10) * 1.4 * factor).toFixed(1)} lbs`, color: 'blue'});
+                    const taRaise = taTarg - taCurr;
+                    // Sodium Bicarb: 1.4 lbs per 10 ppm per 10k gal
+                    dosingSections.push({
+                      title: `Raise Alkalinity: ${taCurr} → ${taTarg} ppm (+${taRaise})`,
+                      color: 'blue',
+                      options: [
+                        { name: 'Sodium Bicarbonate', amount: `${((taRaise / 10) * 1.4 * factor).toFixed(2)} lbs`, selected: true }
+                      ]
+                    });
                   }
                   
-                  // CYA
+                  // CYA / STABILIZER
                   const cyaCurr = parseFloat(waterTestReadings.cyanuricAcid) || 0;
                   const cyaTarg = waterTestTargets.cyanuricAcid || 40;
-                  if (cyaCurr >= 0 && cyaTarg > cyaCurr + 5) {
-                    recs.push({chem: 'Stabilizer (CYA)', amount: `${(((cyaTarg - cyaCurr) / 10) * 13 * factor / 16).toFixed(1)} lbs`, color: 'purple'});
+                  if (cyaTarg > cyaCurr + 5) {
+                    const cyaRaise = cyaTarg - cyaCurr;
+                    // Granular CYA: 13 oz per 10 ppm per 10k gal
+                    // Liquid CYA: ~16 fl oz per 10 ppm per 10k gal
+                    const cyaOptions = [
+                      { name: 'Granular Stabilizer (CYA)', rate: 13, isLiquid: false, selected: waterTestChemicalTypes.cya === 'granular' },
+                      { name: 'Liquid Stabilizer (CYA)', rate: 16, isLiquid: true, selected: waterTestChemicalTypes.cya === 'liquid' },
+                    ];
+                    dosingSections.push({
+                      title: `Raise CYA: ${cyaCurr} → ${cyaTarg} ppm (+${cyaRaise})`,
+                      color: 'purple',
+                      options: cyaOptions.map(opt => ({
+                        ...opt,
+                        amount: opt.isLiquid 
+                          ? formatFlOz((cyaRaise / 10) * opt.rate * factor)
+                          : formatOz((cyaRaise / 10) * opt.rate * factor)
+                      }))
+                    });
                   }
                   
-                  // Calcium
+                  // CALCIUM HARDNESS
                   const chCurr = parseFloat(waterTestReadings.calciumHardness) || 0;
                   const chTarg = waterTestTargets.calciumHardness || 300;
-                  if (chCurr > 0 && chTarg > chCurr + 20) {
-                    recs.push({chem: 'Calcium Chloride', amount: `${(((chTarg - chCurr) / 10) * 1.2 * factor).toFixed(1)} lbs`, color: 'blue'});
+                  if (chCurr > 0 && chTarg > chCurr + 10) {
+                    const chRaise = chTarg - chCurr;
+                    // Calcium Chloride: 1.2 lbs per 10 ppm per 10k gal
+                    dosingSections.push({
+                      title: `Raise Calcium: ${chCurr} → ${chTarg} ppm (+${chRaise})`,
+                      color: 'cyan',
+                      options: [
+                        { name: 'Calcium Chloride', amount: `${((chRaise / 10) * 1.2 * factor).toFixed(2)} lbs`, selected: true }
+                      ]
+                    });
                   }
                   
-                  // Salt
+                  // SALT
                   const saltCurr = parseFloat(waterTestReadings.salt) || 0;
                   const saltTarg = waterTestTargets.salt || 3200;
                   if (saltCurr > 0 && saltTarg > saltCurr + 100) {
-                    recs.push({chem: 'Pool Salt', amount: `${Math.round(((saltTarg - saltCurr) / 1000) * 83 * factor)} lbs`, color: 'blue'});
+                    const saltRaise = saltTarg - saltCurr;
+                    // Pool Salt: 83 lbs per 1000 ppm per 10k gal
+                    const lbsNeeded = (saltRaise / 1000) * 83 * factor;
+                    const bags40 = Math.ceil(lbsNeeded / 40);
+                    dosingSections.push({
+                      title: `Raise Salt: ${saltCurr} → ${saltTarg} ppm (+${saltRaise})`,
+                      color: 'blue',
+                      options: [
+                        { name: 'Pool Salt', amount: `${Math.round(lbsNeeded)} lbs (${bags40} × 40lb bags)`, selected: true }
+                      ]
+                    });
                   }
                   
-                  // Phosphates
-                  if ((parseFloat(waterTestReadings.phosphates) || 0) > 500) {
-                    recs.push({chem: 'Phos Remover', amount: 'Treat', color: 'green'});
+                  // PHOSPHATES
+                  const phosCurr = parseFloat(waterTestReadings.phosphates) || 0;
+                  if (phosCurr > 500) {
+                    dosingSections.push({
+                      title: `Reduce Phosphates: ${phosCurr} ppb (High!)`,
+                      color: 'green',
+                      options: [
+                        { name: 'Phosphate Remover', amount: 'Follow product label', selected: true }
+                      ]
+                    });
                   }
                   
-                  if (recs.length === 0) return null;
+                  if (dosingSections.length === 0) return null;
+                  
+                  const colorClasses = {
+                    yellow: { bg: 'bg-yellow-50', border: 'border-yellow-400', header: 'bg-yellow-100 text-yellow-800', pill: 'bg-yellow-200' },
+                    red: { bg: 'bg-red-50', border: 'border-red-400', header: 'bg-red-100 text-red-800', pill: 'bg-red-200' },
+                    blue: { bg: 'bg-blue-50', border: 'border-blue-400', header: 'bg-blue-100 text-blue-800', pill: 'bg-blue-200' },
+                    purple: { bg: 'bg-purple-50', border: 'border-purple-400', header: 'bg-purple-100 text-purple-800', pill: 'bg-purple-200' },
+                    green: { bg: 'bg-green-50', border: 'border-green-400', header: 'bg-green-100 text-green-800', pill: 'bg-green-200' },
+                    cyan: { bg: 'bg-cyan-50', border: 'border-cyan-400', header: 'bg-cyan-100 text-cyan-800', pill: 'bg-cyan-200' },
+                  };
                   
                   return (
-                    <div className="mt-3 p-3 bg-white rounded-lg border">
-                      <div className="text-xs font-bold text-gray-700 mb-2">📋 Dosing to Reach Targets ({gallons.toLocaleString()} gal):</div>
-                      <div className="space-y-1">
-                        {recs.map((r, i) => {
-                          const colors = {
-                            yellow: 'bg-yellow-100 text-yellow-800',
-                            red: 'bg-red-100 text-red-800',
-                            blue: 'bg-blue-100 text-blue-800',
-                            purple: 'bg-purple-100 text-purple-800',
-                            green: 'bg-green-100 text-green-800'
-                          };
-                          return (
-                            <div key={i} className={`flex justify-between items-center px-3 py-2 rounded ${colors[r.color]}`}>
-                              <span className="font-medium text-sm">{r.chem}</span>
-                              <span className="font-bold">{r.amount}</span>
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-bold text-gray-700">📋 Chemical Doses ({gallons.toLocaleString()} gal):</div>
+                      {dosingSections.map((section, idx) => {
+                        const colors = colorClasses[section.color] || colorClasses.blue;
+                        return (
+                          <div key={idx} className={`${colors.bg} border ${colors.border} rounded-lg overflow-hidden`}>
+                            <div className={`${colors.header} px-3 py-1.5 text-xs font-bold`}>
+                              {section.title}
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div className="p-2 space-y-1">
+                              {section.options.map((opt, optIdx) => (
+                                <div 
+                                  key={optIdx} 
+                                  className={`flex justify-between items-center px-2 py-1.5 rounded text-sm ${opt.selected ? colors.pill + ' font-bold' : 'bg-white/50'}`}
+                                >
+                                  <span className={opt.selected ? '' : 'text-gray-500'}>{opt.name}</span>
+                                  <span className="font-mono">{opt.amount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
@@ -6515,44 +6613,58 @@ Best regards,
                     const recs = [];
                     const gallons = serviceToComplete?.poolGallons || 15000;
                     const factor = gallons / 10000;
-                    const toQtrGal = (floz) => (Math.round((floz / 128) * 4) / 4);
+                    
+                    // Helper for formatting
+                    const formatFlOz = (oz) => oz >= 128 ? `${(oz/128).toFixed(2)} gal` : oz >= 32 ? `${(oz/32).toFixed(1)} qt` : `${oz.toFixed(1)} fl oz`;
+                    const formatOz = (oz) => oz >= 16 ? `${(oz/16).toFixed(2)} lbs` : `${oz.toFixed(1)} oz`;
                     
                     const fcCurr = parseFloat(serviceWaterTest.chlorine) || 0;
                     const fcTarg = parseFloat(serviceWaterTarget.chlorine) || 3;
-                    if (fcTarg > fcCurr) {
+                    if (fcTarg > fcCurr && fcCurr > 0) {
                       const ppm = fcTarg - fcCurr;
-                      const rates = {liquid12:{r:10.7,liq:true,n:'Liquid 12.5%'},liquid10:{r:12.8,liq:true,n:'Liquid 10%'},calHypo68:{r:1.95,liq:false,n:'Cal-Hypo 68%'},calHypo73:{r:1.8,liq:false,n:'Cal-Hypo 73%'},dichlor:{r:2.1,liq:false,n:'Dichlor'}};
-                      const c = rates[serviceChlorineType];
-                      if (c.liq) { recs.push({chem:c.n,amount:`${toQtrGal(ppm*c.r*factor).toFixed(2)} gal`,color:'yellow'}); }
-                      else { recs.push({chem:c.n,amount:`${Math.ceil(ppm*c.r*factor/16)} lbs`,color:'yellow'}); }
+                      // Corrected rates: fl oz or oz per 1 ppm per 10k gal
+                      const rates = {liquid12:{r:10.7,liq:true,n:'Liquid 12.5%'},liquid10:{r:12.8,liq:true,n:'Liquid 10%'},calHypo68:{r:2.1,liq:false,n:'Cal-Hypo 68%'},calHypo73:{r:2.0,liq:false,n:'Cal-Hypo 73%'},dichlor:{r:2.1,liq:false,n:'Dichlor'}};
+                      const c = rates[serviceChlorineType] || rates.liquid12;
+                      if (c.liq) { recs.push({chem:c.n,amount:formatFlOz(ppm*c.r*factor),color:'yellow'}); }
+                      else { recs.push({chem:c.n,amount:formatOz(ppm*c.r*factor),color:'yellow'}); }
                     }
                     
-                    const phCurr = parseFloat(serviceWaterTest.ph) || 7.4;
+                    const phCurr = parseFloat(serviceWaterTest.ph) || 0;
                     const phTarg = parseFloat(serviceWaterTarget.ph) || 7.5;
-                    if (phCurr > phTarg + 0.1) {
+                    if (phCurr > 0 && phCurr > phTarg + 0.05) {
                       const drop = phCurr - phTarg;
-                      if (serviceAcidType === 'muriatic') { recs.push({chem:'Muriatic Acid',amount:`${toQtrGal((drop/0.2)*14*factor).toFixed(2)} gal`,color:'red'}); }
-                      else { recs.push({chem:'Dry Acid',amount:`${((drop/0.2)*6*factor/16).toFixed(1)} lbs`,color:'red'}); }
-                    } else if (phTarg > phCurr + 0.1) {
-                      recs.push({chem:'Soda Ash',amount:`${(((phTarg-phCurr)/0.2)*6*factor/16).toFixed(1)} lbs`,color:'blue'});
+                      // Muriatic: 16 fl oz per 0.2 pH drop per 10k gal
+                      // Dry Acid: 12 oz per 0.2 pH drop per 10k gal
+                      if (serviceAcidType === 'muriatic') { recs.push({chem:'Muriatic Acid',amount:formatFlOz((drop/0.2)*16*factor),color:'red'}); }
+                      else { recs.push({chem:'Dry Acid',amount:formatOz((drop/0.2)*12*factor),color:'red'}); }
+                    } else if (phCurr > 0 && phTarg > phCurr + 0.05) {
+                      // Soda Ash: 6 oz per 0.2 pH raise per 10k gal
+                      recs.push({chem:'Soda Ash',amount:formatOz(((phTarg-phCurr)/0.2)*6*factor),color:'blue'});
                     }
                     
-                    const taCurr = parseFloat(serviceWaterTest.alkalinity) || 100;
+                    const taCurr = parseFloat(serviceWaterTest.alkalinity) || 0;
                     const taTarg = parseFloat(serviceWaterTarget.alkalinity) || 100;
-                    if (taTarg > taCurr + 5) { recs.push({chem:'Bicarb',amount:`${(((taTarg-taCurr)/10)*1.4*factor).toFixed(1)} lbs`,color:'blue'}); }
+                    // Bicarb: 1.4 lbs (22.4 oz) per 10 ppm per 10k gal
+                    if (taCurr > 0 && taTarg > taCurr + 5) { recs.push({chem:'Sodium Bicarbonate',amount:`${(((taTarg-taCurr)/10)*1.4*factor).toFixed(2)} lbs`,color:'blue'}); }
                     
                     const cyaCurr = parseFloat(serviceWaterTest.cya) || 0;
                     const cyaTarg = parseFloat(serviceWaterTarget.cya) || 40;
-                    if (cyaTarg > cyaCurr + 5) { recs.push({chem:'Stabilizer (CYA)',amount:`${(((cyaTarg-cyaCurr)/10)*13*factor/16).toFixed(1)} lbs`,color:'purple'}); }
+                    // CYA: 13 oz per 10 ppm per 10k gal
+                    if (cyaTarg > cyaCurr + 5) { recs.push({chem:'Stabilizer (CYA)',amount:formatOz(((cyaTarg-cyaCurr)/10)*13*factor),color:'purple'}); }
                     
-                    const chCurr = parseFloat(serviceWaterTest.hardness) || 250;
+                    const chCurr = parseFloat(serviceWaterTest.hardness) || 0;
                     const chTarg = parseFloat(serviceWaterTarget.hardness) || 300;
-                    if (chTarg > chCurr + 20) { recs.push({chem:'Calcium Chloride',amount:`${(((chTarg-chCurr)/10)*1.2*factor).toFixed(1)} lbs`,color:'blue'}); }
+                    // Calcium Chloride: 1.2 lbs (19.2 oz) per 10 ppm per 10k gal
+                    if (chCurr > 0 && chTarg > chCurr + 10) { recs.push({chem:'Calcium Chloride',amount:`${(((chTarg-chCurr)/10)*1.2*factor).toFixed(2)} lbs`,color:'blue'}); }
                     
                     if (serviceToComplete?.isSaltPool) {
                       const saltCurr = parseFloat(serviceWaterTest.salt) || 0;
                       const saltTarg = parseFloat(serviceWaterTarget.salt) || 3200;
-                      if (saltTarg > saltCurr + 100) { recs.push({chem:'Pool Salt',amount:`${Math.round(((saltTarg-saltCurr)/1000)*83*factor)} lbs`,color:'blue'}); }
+                      // Salt: 83 lbs per 1000 ppm per 10k gal
+                      if (saltTarg > saltCurr + 100) { 
+                        const lbs = Math.round(((saltTarg-saltCurr)/1000)*83*factor);
+                        recs.push({chem:'Pool Salt',amount:`${lbs} lbs (${Math.ceil(lbs/40)} bags)`,color:'blue'}); 
+                      }
                     }
                     
                     if ((parseFloat(serviceWaterTest.phosphates)||0) > 500) { recs.push({chem:'Phos Remover',amount:'Treat',color:'green'}); }
@@ -6560,12 +6672,12 @@ Best regards,
                     if (recs.length === 0) return null;
                     return (
                       <div className="mt-3 p-2 bg-white rounded-lg">
-                        <div className="text-xs font-bold text-gray-700 mb-2">📋 Dosing to Reach Targets:</div>
+                        <div className="text-xs font-bold text-gray-700 mb-2">📋 Dosing ({gallons.toLocaleString()} gal):</div>
                         <div className="space-y-1">
                           {recs.map((r,i) => (
                             <div key={i} className={`flex justify-between items-center px-2 py-1 rounded text-sm ${r.color==='yellow'?'bg-yellow-100':r.color==='red'?'bg-red-100':r.color==='blue'?'bg-blue-100':r.color==='purple'?'bg-purple-100':'bg-green-100'}`}>
                               <span className="font-medium">{r.chem}</span>
-                              <span className="font-bold">{r.amount}</span>
+                              <span className="font-bold font-mono">{r.amount}</span>
                             </div>
                           ))}
                         </div>
@@ -9335,7 +9447,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.5.0
+        v3.5.1
       </div>
     </div>
   );
