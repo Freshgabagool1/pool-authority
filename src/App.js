@@ -832,103 +832,42 @@ Best regards,
     const salt = parseFloat(waterTestReadings.salt) || 0;
     
     // ============================================
-    // ORENDA-STYLE LSI CALCULATION
-    // LSI = pH + TF + CF + AF - TDSF
+    // WOJTOWICZ 2001 REVISED SATURATION INDEX
+    // SI = pH + Log[Hard] + Log[Alk] + TC + C
+    // From: "A Revised and Updated Saturation Index Equation"
+    // Journal of the Swimming Pool and Spa Industry, Vol 3, No 1
     // ============================================
     
-    // 1. CYA Correction for Carbonate Alkalinity (Wojtowicz formula)
-    // The correction factor varies with pH
+    // Calculate TDS (Total Dissolved Solids)
+    // Base TDS ~300-500 ppm for fresh water, salt adds directly
+    const baseTDS = 400;
+    const tds = Math.max(baseTDS + salt, 500);
+    
+    // Carbonate Alkalinity = TA - (CYA × correction factor)
+    // Using Wojtowicz formula: correction ≈ 1 / (1 + 10^(6.83 - pH))
     const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
     const cyaAlkalinity = cya * cyaFraction;
     const carbAlk = Math.max(alk - cyaAlkalinity, 1);
     
-    // 2. TDS Calculation (Orenda combines TDS + Salt)
-    // For fresh water pools: TDS ≈ 500-1000 ppm
-    // For salt pools: TDS = base + salt (salt IS the dominant contributor)
-    // Orenda example: base(~400-500) + salt(3200) = ~3700 TDS
-    const baseTDS = 500; // Typical base TDS for pool water
-    const tds = baseTDS + salt; // Salt directly adds to TDS
+    // Log of Calcium Hardness (ppm as CaCO3)
+    const logHard = Math.log10(Math.max(calcium, 1));
     
-    // 3. Temperature Factor (from standard table with interpolation)
-    // Table: 32°F=0.0, 37°F=0.1, 46°F=0.2, 53°F=0.3, 60°F=0.4, 66°F=0.5, 
-    //        76°F=0.6, 84°F=0.7, 94°F=0.8, 105°F=0.9
-    const tempTable = [
-      { t: 32, f: 0.0 }, { t: 37, f: 0.1 }, { t: 46, f: 0.2 }, { t: 53, f: 0.3 },
-      { t: 60, f: 0.4 }, { t: 66, f: 0.5 }, { t: 76, f: 0.6 }, { t: 84, f: 0.7 },
-      { t: 94, f: 0.8 }, { t: 105, f: 0.9 }
-    ];
-    let TF = 0.6;
-    for (let i = 0; i < tempTable.length - 1; i++) {
-      if (tempF >= tempTable[i].t && tempF <= tempTable[i + 1].t) {
-        const ratio = (tempF - tempTable[i].t) / (tempTable[i + 1].t - tempTable[i].t);
-        TF = tempTable[i].f + ratio * (tempTable[i + 1].f - tempTable[i].f);
-        break;
-      }
-    }
-    if (tempF < 32) TF = 0.0;
-    if (tempF > 105) TF = 0.9;
+    // Log of Carbonate Alkalinity (ppm as CaCO3)
+    const logAlk = Math.log10(Math.max(carbAlk, 1));
     
-    // 4. Calcium Hardness Factor (from standard table with interpolation)
-    // Table: 5=0.3, 25=1.0, 50=1.3, 75=1.5, 100=1.6, 150=1.8, 200=1.9, 
-    //        250=2.0, 300=2.1, 400=2.2, 600=2.4, 800=2.5, 1000=2.6
-    const chTable = [
-      { c: 5, f: 0.3 }, { c: 25, f: 1.0 }, { c: 50, f: 1.3 }, { c: 75, f: 1.5 },
-      { c: 100, f: 1.6 }, { c: 150, f: 1.8 }, { c: 200, f: 1.9 }, { c: 250, f: 2.0 },
-      { c: 300, f: 2.1 }, { c: 400, f: 2.2 }, { c: 600, f: 2.4 }, { c: 800, f: 2.5 },
-      { c: 1000, f: 2.6 }
-    ];
-    let CF = 2.0;
-    for (let i = 0; i < chTable.length - 1; i++) {
-      if (calcium >= chTable[i].c && calcium <= chTable[i + 1].c) {
-        const ratio = (calcium - chTable[i].c) / (chTable[i + 1].c - chTable[i].c);
-        CF = chTable[i].f + ratio * (chTable[i + 1].f - chTable[i].f);
-        break;
-      }
-    }
-    if (calcium < 5) CF = 0.3;
-    if (calcium > 1000) CF = 2.6;
+    // Temperature Correction (Wojtowicz 2001)
+    // TC = -0.276 + 0.00861 × °F
+    const TC = -0.276 + 0.00861 * tempF;
     
-    // 5. Alkalinity Factor (from standard table with interpolation)
-    // Uses Carbonate Alkalinity (after CYA correction)
-    // Table: 5=0.7, 25=1.4, 50=1.7, 75=1.9, 100=2.0, 125=2.1, 150=2.2,
-    //        200=2.3, 250=2.4, 300=2.5, 400=2.6, 600=2.8, 800=2.9
-    const alkTable = [
-      { a: 5, f: 0.7 }, { a: 25, f: 1.4 }, { a: 50, f: 1.7 }, { a: 75, f: 1.9 },
-      { a: 100, f: 2.0 }, { a: 125, f: 2.1 }, { a: 150, f: 2.2 }, { a: 200, f: 2.3 },
-      { a: 250, f: 2.4 }, { a: 300, f: 2.5 }, { a: 400, f: 2.6 }, { a: 600, f: 2.8 },
-      { a: 800, f: 2.9 }
-    ];
-    let AF = 2.0;
-    for (let i = 0; i < alkTable.length - 1; i++) {
-      if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i + 1].a) {
-        const ratio = (carbAlk - alkTable[i].a) / (alkTable[i + 1].a - alkTable[i].a);
-        AF = alkTable[i].f + ratio * (alkTable[i + 1].f - alkTable[i].f);
-        break;
-      }
-    }
-    if (carbAlk < 5) AF = 0.7;
-    if (carbAlk > 800) AF = 2.9;
+    // Constant Term C (includes ionic strength correction)
+    // C = -11.30 - 0.333 × Log(TDS)
+    // At TDS 500: C ≈ -12.20
+    // At TDS 1000: C ≈ -12.30
+    // At TDS 4000: C ≈ -12.50
+    const C = -11.30 - 0.333 * Math.log10(tds);
     
-    // 6. TDS Factor (CRITICAL for salt pools - from APSP/ANSI standard table)
-    // Table: 0-1000=12.1, 1500=12.16, 2000=12.2, 2500=12.23, 3000=12.25,
-    //        4000=12.3, 5000=12.34, 6000=12.37
-    const tdsTable = [
-      { t: 0, f: 12.1 }, { t: 1000, f: 12.1 }, { t: 1500, f: 12.16 }, 
-      { t: 2000, f: 12.2 }, { t: 2500, f: 12.23 }, { t: 3000, f: 12.25 },
-      { t: 4000, f: 12.3 }, { t: 5000, f: 12.34 }, { t: 6000, f: 12.37 }
-    ];
-    let TDSF = 12.1;
-    for (let i = 0; i < tdsTable.length - 1; i++) {
-      if (tds >= tdsTable[i].t && tds <= tdsTable[i + 1].t) {
-        const ratio = (tds - tdsTable[i].t) / (tdsTable[i + 1].t - tdsTable[i].t);
-        TDSF = tdsTable[i].f + ratio * (tdsTable[i + 1].f - tdsTable[i].f);
-        break;
-      }
-    }
-    if (tds > 6000) TDSF = 12.37 + ((tds - 6000) / 10000) * 0.1; // Extrapolate
-    
-    // LSI = pH + TF + CF + AF - TDSF
-    const lsi = ph + TF + CF + AF - TDSF;
+    // SI = pH + Log[Hard] + Log[Alk] + TC + C
+    const lsi = ph + logHard + logAlk + TC + C;
     
     return lsi;
   };
@@ -4562,85 +4501,26 @@ Best regards,
                 {(() => {
                   const calcLSI = (ph, tempF, calcium, alk, cya, salt) => {
                     if (!ph || !alk) return null;
+                    // WOJTOWICZ 2001: SI = pH + Log[Hard] + Log[Alk] + TC + C
                     
-                    // ORENDA-STYLE LSI: LSI = pH + TF + CF + AF - TDSF
+                    // TDS = base + salt
+                    const tds = Math.max(400 + (salt || 0), 500);
                     
-                    // CYA correction (Wojtowicz)
+                    // CYA correction using Wojtowicz formula
                     const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
                     const carbAlk = Math.max(alk - ((cya || 0) * cyaFraction), 1);
                     
-                    // TDS = base + salt
-                    const tds = 500 + (salt || 0);
+                    // Log factors
+                    const logHard = Math.log10(Math.max(calcium || 250, 1));
+                    const logAlk = Math.log10(Math.max(carbAlk, 1));
                     
-                    // Temperature Factor (table interpolation)
-                    const tempTable = [
-                      { t: 32, f: 0.0 }, { t: 37, f: 0.1 }, { t: 46, f: 0.2 }, { t: 53, f: 0.3 },
-                      { t: 60, f: 0.4 }, { t: 66, f: 0.5 }, { t: 76, f: 0.6 }, { t: 84, f: 0.7 },
-                      { t: 94, f: 0.8 }, { t: 105, f: 0.9 }
-                    ];
-                    let TF = 0.6;
-                    for (let i = 0; i < tempTable.length - 1; i++) {
-                      if (tempF >= tempTable[i].t && tempF <= tempTable[i + 1].t) {
-                        const r = (tempF - tempTable[i].t) / (tempTable[i + 1].t - tempTable[i].t);
-                        TF = tempTable[i].f + r * (tempTable[i + 1].f - tempTable[i].f);
-                        break;
-                      }
-                    }
-                    if (tempF < 32) TF = 0.0;
-                    if (tempF > 105) TF = 0.9;
+                    // Temperature Correction: TC = -0.276 + 0.00861 × °F
+                    const TC = -0.276 + 0.00861 * tempF;
                     
-                    // Calcium Factor (table interpolation)
-                    const chTable = [
-                      { c: 5, f: 0.3 }, { c: 25, f: 1.0 }, { c: 50, f: 1.3 }, { c: 75, f: 1.5 },
-                      { c: 100, f: 1.6 }, { c: 150, f: 1.8 }, { c: 200, f: 1.9 }, { c: 250, f: 2.0 },
-                      { c: 300, f: 2.1 }, { c: 400, f: 2.2 }, { c: 600, f: 2.4 }, { c: 800, f: 2.5 }
-                    ];
-                    let CF = 2.0;
-                    const ca = calcium || 250;
-                    for (let i = 0; i < chTable.length - 1; i++) {
-                      if (ca >= chTable[i].c && ca <= chTable[i + 1].c) {
-                        const r = (ca - chTable[i].c) / (chTable[i + 1].c - chTable[i].c);
-                        CF = chTable[i].f + r * (chTable[i + 1].f - chTable[i].f);
-                        break;
-                      }
-                    }
-                    if (ca < 5) CF = 0.3;
-                    if (ca > 800) CF = 2.5;
+                    // Constant: C = -11.30 - 0.333 × Log(TDS)
+                    const C = -11.30 - 0.333 * Math.log10(tds);
                     
-                    // Alkalinity Factor (table interpolation, using carbonate alk)
-                    const alkTable = [
-                      { a: 5, f: 0.7 }, { a: 25, f: 1.4 }, { a: 50, f: 1.7 }, { a: 75, f: 1.9 },
-                      { a: 100, f: 2.0 }, { a: 125, f: 2.1 }, { a: 150, f: 2.2 }, { a: 200, f: 2.3 },
-                      { a: 250, f: 2.4 }, { a: 300, f: 2.5 }, { a: 400, f: 2.6 }
-                    ];
-                    let AF = 2.0;
-                    for (let i = 0; i < alkTable.length - 1; i++) {
-                      if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i + 1].a) {
-                        const r = (carbAlk - alkTable[i].a) / (alkTable[i + 1].a - alkTable[i].a);
-                        AF = alkTable[i].f + r * (alkTable[i + 1].f - alkTable[i].f);
-                        break;
-                      }
-                    }
-                    if (carbAlk < 5) AF = 0.7;
-                    if (carbAlk > 400) AF = 2.6;
-                    
-                    // TDS Factor (CRITICAL for salt pools)
-                    const tdsTable = [
-                      { t: 0, f: 12.1 }, { t: 1000, f: 12.1 }, { t: 1500, f: 12.16 }, 
-                      { t: 2000, f: 12.2 }, { t: 2500, f: 12.23 }, { t: 3000, f: 12.25 },
-                      { t: 4000, f: 12.3 }, { t: 5000, f: 12.34 }, { t: 6000, f: 12.37 }
-                    ];
-                    let TDSF = 12.1;
-                    for (let i = 0; i < tdsTable.length - 1; i++) {
-                      if (tds >= tdsTable[i].t && tds <= tdsTable[i + 1].t) {
-                        const r = (tds - tdsTable[i].t) / (tdsTable[i + 1].t - tdsTable[i].t);
-                        TDSF = tdsTable[i].f + r * (tdsTable[i + 1].f - tdsTable[i].f);
-                        break;
-                      }
-                    }
-                    if (tds > 6000) TDSF = 12.37 + ((tds - 6000) / 10000) * 0.1;
-                    
-                    return ph + TF + CF + AF - TDSF;
+                    return ph + logHard + logAlk + TC + C;
                   };
                   
                   const temp = waterTestTemperature || 78;
@@ -6632,84 +6512,26 @@ Best regards,
                   {/* LSI Display */}
                   {(serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.hardness) && (() => {
                     const calcLSI = (ph, tempF, calcium, alk, cya, salt) => {
-                      // ORENDA-STYLE LSI: LSI = pH + TF + CF + AF - TDSF
+                      // WOJTOWICZ 2001: SI = pH + Log[Hard] + Log[Alk] + TC + C
                       
-                      // CYA correction (Wojtowicz)
+                      // TDS = base + salt
+                      const tds = Math.max(400 + (salt || 0), 500);
+                      
+                      // CYA correction using Wojtowicz formula
                       const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
                       const carbAlk = Math.max(alk - ((cya || 0) * cyaFraction), 1);
                       
-                      // TDS = base + salt
-                      const tds = 500 + (salt || 0);
+                      // Log factors
+                      const logHard = Math.log10(Math.max(calcium || 250, 1));
+                      const logAlk = Math.log10(Math.max(carbAlk, 1));
                       
-                      // Temperature Factor
-                      const tempTable = [
-                        { t: 32, f: 0.0 }, { t: 37, f: 0.1 }, { t: 46, f: 0.2 }, { t: 53, f: 0.3 },
-                        { t: 60, f: 0.4 }, { t: 66, f: 0.5 }, { t: 76, f: 0.6 }, { t: 84, f: 0.7 },
-                        { t: 94, f: 0.8 }, { t: 105, f: 0.9 }
-                      ];
-                      let TF = 0.6;
-                      for (let i = 0; i < tempTable.length - 1; i++) {
-                        if (tempF >= tempTable[i].t && tempF <= tempTable[i + 1].t) {
-                          const r = (tempF - tempTable[i].t) / (tempTable[i + 1].t - tempTable[i].t);
-                          TF = tempTable[i].f + r * (tempTable[i + 1].f - tempTable[i].f);
-                          break;
-                        }
-                      }
-                      if (tempF < 32) TF = 0.0;
-                      if (tempF > 105) TF = 0.9;
+                      // Temperature Correction: TC = -0.276 + 0.00861 × °F
+                      const TC = -0.276 + 0.00861 * tempF;
                       
-                      // Calcium Factor
-                      const chTable = [
-                        { c: 5, f: 0.3 }, { c: 25, f: 1.0 }, { c: 50, f: 1.3 }, { c: 75, f: 1.5 },
-                        { c: 100, f: 1.6 }, { c: 150, f: 1.8 }, { c: 200, f: 1.9 }, { c: 250, f: 2.0 },
-                        { c: 300, f: 2.1 }, { c: 400, f: 2.2 }, { c: 600, f: 2.4 }, { c: 800, f: 2.5 }
-                      ];
-                      let CF = 2.0;
-                      const ca = calcium || 250;
-                      for (let i = 0; i < chTable.length - 1; i++) {
-                        if (ca >= chTable[i].c && ca <= chTable[i + 1].c) {
-                          const r = (ca - chTable[i].c) / (chTable[i + 1].c - chTable[i].c);
-                          CF = chTable[i].f + r * (chTable[i + 1].f - chTable[i].f);
-                          break;
-                        }
-                      }
-                      if (ca < 5) CF = 0.3;
-                      if (ca > 800) CF = 2.5;
+                      // Constant: C = -11.30 - 0.333 × Log(TDS)
+                      const C = -11.30 - 0.333 * Math.log10(tds);
                       
-                      // Alkalinity Factor (carbonate alk)
-                      const alkTable = [
-                        { a: 5, f: 0.7 }, { a: 25, f: 1.4 }, { a: 50, f: 1.7 }, { a: 75, f: 1.9 },
-                        { a: 100, f: 2.0 }, { a: 125, f: 2.1 }, { a: 150, f: 2.2 }, { a: 200, f: 2.3 },
-                        { a: 250, f: 2.4 }, { a: 300, f: 2.5 }, { a: 400, f: 2.6 }
-                      ];
-                      let AF = 2.0;
-                      for (let i = 0; i < alkTable.length - 1; i++) {
-                        if (carbAlk >= alkTable[i].a && carbAlk <= alkTable[i + 1].a) {
-                          const r = (carbAlk - alkTable[i].a) / (alkTable[i + 1].a - alkTable[i].a);
-                          AF = alkTable[i].f + r * (alkTable[i + 1].f - alkTable[i].f);
-                          break;
-                        }
-                      }
-                      if (carbAlk < 5) AF = 0.7;
-                      if (carbAlk > 400) AF = 2.6;
-                      
-                      // TDS Factor (CRITICAL for salt pools)
-                      const tdsTable = [
-                        { t: 0, f: 12.1 }, { t: 1000, f: 12.1 }, { t: 1500, f: 12.16 }, 
-                        { t: 2000, f: 12.2 }, { t: 2500, f: 12.23 }, { t: 3000, f: 12.25 },
-                        { t: 4000, f: 12.3 }, { t: 5000, f: 12.34 }, { t: 6000, f: 12.37 }
-                      ];
-                      let TDSF = 12.1;
-                      for (let i = 0; i < tdsTable.length - 1; i++) {
-                        if (tds >= tdsTable[i].t && tds <= tdsTable[i + 1].t) {
-                          const r = (tds - tdsTable[i].t) / (tdsTable[i + 1].t - tdsTable[i].t);
-                          TDSF = tdsTable[i].f + r * (tdsTable[i + 1].f - tdsTable[i].f);
-                          break;
-                        }
-                      }
-                      if (tds > 6000) TDSF = 12.37 + ((tds - 6000) / 10000) * 0.1;
-                      
-                      return ph + TF + CF + AF - TDSF;
+                      return ph + logHard + logAlk + TC + C;
                     };
                     const temp = parseFloat(serviceWaterTest.temp) || 78;
                     const currentLSI = calcLSI(parseFloat(serviceWaterTest.ph)||7.4, temp, parseFloat(serviceWaterTest.hardness)||250, parseFloat(serviceWaterTest.alkalinity)||100, parseFloat(serviceWaterTest.cya)||0, parseFloat(serviceWaterTest.salt)||0);
@@ -9571,7 +9393,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.5.3
+        v3.5.5
       </div>
     </div>
   );
