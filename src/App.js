@@ -832,42 +832,31 @@ Best regards,
     const salt = parseFloat(waterTestReadings.salt) || 0;
     
     // ============================================
-    // WOJTOWICZ 2001 REVISED SATURATION INDEX
-    // SI = pH + Log[Hard] + Log[Alk] + TC + C
-    // From: "A Revised and Updated Saturation Index Equation"
-    // Journal of the Swimming Pool and Spa Industry, Vol 3, No 1
+    // ORENDA-MATCHING LSI FORMULA
+    // Reverse-engineered to match Orenda Calculator
+    // SI = pH + log(CH) + log(CarbAlk) + TC + C
     // ============================================
     
-    // Calculate TDS (Total Dissolved Solids)
-    // Base TDS ~300-500 ppm for fresh water, salt adds directly
-    const baseTDS = 400;
-    const tds = Math.max(baseTDS + salt, 500);
+    // TDS calculation (base water TDS + salt)
+    const tds = Math.max(400 + salt, 500);
     
-    // Carbonate Alkalinity = TA - (CYA × correction factor)
-    // Using Wojtowicz formula: correction ≈ 1 / (1 + 10^(6.83 - pH))
-    const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
-    const cyaAlkalinity = cya * cyaFraction;
-    const carbAlk = Math.max(alk - cyaAlkalinity, 1);
+    // CYA correction with pKa = 7.84 (Orenda's value, not Wojtowicz 6.83)
+    const cyaPka = 7.84;
+    const cyaFraction = 1 / (1 + Math.pow(10, cyaPka - ph));
+    const carbAlk = Math.max(alk - (cya * cyaFraction), 1);
     
-    // Log of Calcium Hardness (ppm as CaCO3)
-    const logHard = Math.log10(Math.max(calcium, 1));
-    
-    // Log of Carbonate Alkalinity (ppm as CaCO3)
+    // Log factors
+    const logCa = Math.log10(Math.max(calcium, 1));
     const logAlk = Math.log10(Math.max(carbAlk, 1));
     
-    // Temperature Correction (Wojtowicz 2001)
-    // TC = -0.276 + 0.00861 × °F
-    const TC = -0.276 + 0.00861 * tempF;
+    // Temperature Correction (optimized to match Orenda)
+    const TC = -0.317 + 0.00706 * tempF;
     
-    // Constant Term C (includes ionic strength correction)
-    // C = -11.30 - 0.333 × Log(TDS)
-    // At TDS 500: C ≈ -12.20
-    // At TDS 1000: C ≈ -12.30
-    // At TDS 4000: C ≈ -12.50
-    const C = -11.30 - 0.333 * Math.log10(tds);
+    // Constant with ionic strength correction (optimized)
+    const C = -11.374 - 0.291 * Math.log10(tds);
     
-    // SI = pH + Log[Hard] + Log[Alk] + TC + C
-    const lsi = ph + logHard + logAlk + TC + C;
+    // SI = pH + log(CH) + log(CarbAlk) + TC + C
+    const lsi = ph + logCa + logAlk + TC + C;
     
     return lsi;
   };
@@ -4501,26 +4490,20 @@ Best regards,
                 {(() => {
                   const calcLSI = (ph, tempF, calcium, alk, cya, salt) => {
                     if (!ph || !alk) return null;
-                    // WOJTOWICZ 2001: SI = pH + Log[Hard] + Log[Alk] + TC + C
+                    // ORENDA-MATCHING: SI = pH + log(CH) + log(CarbAlk) + TC + C
                     
-                    // TDS = base + salt
                     const tds = Math.max(400 + (salt || 0), 500);
                     
-                    // CYA correction using Wojtowicz formula
-                    const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
+                    // CYA correction with pKa = 7.84
+                    const cyaFraction = 1 / (1 + Math.pow(10, 7.84 - ph));
                     const carbAlk = Math.max(alk - ((cya || 0) * cyaFraction), 1);
                     
-                    // Log factors
-                    const logHard = Math.log10(Math.max(calcium || 250, 1));
+                    const logCa = Math.log10(Math.max(calcium || 250, 1));
                     const logAlk = Math.log10(Math.max(carbAlk, 1));
+                    const TC = -0.317 + 0.00706 * tempF;
+                    const C = -11.374 - 0.291 * Math.log10(tds);
                     
-                    // Temperature Correction: TC = -0.276 + 0.00861 × °F
-                    const TC = -0.276 + 0.00861 * tempF;
-                    
-                    // Constant: C = -11.30 - 0.333 × Log(TDS)
-                    const C = -11.30 - 0.333 * Math.log10(tds);
-                    
-                    return ph + logHard + logAlk + TC + C;
+                    return ph + logCa + logAlk + TC + C;
                   };
                   
                   const temp = waterTestTemperature || 78;
@@ -6512,26 +6495,20 @@ Best regards,
                   {/* LSI Display */}
                   {(serviceWaterTest.ph || serviceWaterTest.alkalinity || serviceWaterTest.hardness) && (() => {
                     const calcLSI = (ph, tempF, calcium, alk, cya, salt) => {
-                      // WOJTOWICZ 2001: SI = pH + Log[Hard] + Log[Alk] + TC + C
+                      // ORENDA-MATCHING: SI = pH + log(CH) + log(CarbAlk) + TC + C
                       
-                      // TDS = base + salt
                       const tds = Math.max(400 + (salt || 0), 500);
                       
-                      // CYA correction using Wojtowicz formula
-                      const cyaFraction = 1 / (1 + Math.pow(10, 6.83 - ph));
+                      // CYA correction with pKa = 7.84
+                      const cyaFraction = 1 / (1 + Math.pow(10, 7.84 - ph));
                       const carbAlk = Math.max(alk - ((cya || 0) * cyaFraction), 1);
                       
-                      // Log factors
-                      const logHard = Math.log10(Math.max(calcium || 250, 1));
+                      const logCa = Math.log10(Math.max(calcium || 250, 1));
                       const logAlk = Math.log10(Math.max(carbAlk, 1));
+                      const TC = -0.317 + 0.00706 * tempF;
+                      const C = -11.374 - 0.291 * Math.log10(tds);
                       
-                      // Temperature Correction: TC = -0.276 + 0.00861 × °F
-                      const TC = -0.276 + 0.00861 * tempF;
-                      
-                      // Constant: C = -11.30 - 0.333 × Log(TDS)
-                      const C = -11.30 - 0.333 * Math.log10(tds);
-                      
-                      return ph + logHard + logAlk + TC + C;
+                      return ph + logCa + logAlk + TC + C;
                     };
                     const temp = parseFloat(serviceWaterTest.temp) || 78;
                     const currentLSI = calcLSI(parseFloat(serviceWaterTest.ph)||7.4, temp, parseFloat(serviceWaterTest.hardness)||250, parseFloat(serviceWaterTest.alkalinity)||100, parseFloat(serviceWaterTest.cya)||0, parseFloat(serviceWaterTest.salt)||0);
@@ -9393,7 +9370,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.5.5
+        v3.5.6
       </div>
     </div>
   );
