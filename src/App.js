@@ -705,8 +705,7 @@ Best regards,
     if (routeCustomers.length > 0 || companySettings.address) {
       loadRouteWeather();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeCustomers[0]?.address, companySettings.address]);
+  }, [routeCustomers.length, companySettings.address]);
 
   // Service functions
   // Open service completion modal
