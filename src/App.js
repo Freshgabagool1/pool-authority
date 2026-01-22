@@ -637,36 +637,6 @@ Best regards,
     }
   };
 
-  const loadRouteWeather = async () => {
-    let addressToGeocode = routeCustomers.length > 0 ? routeCustomers[0].address : companySettings.address;
-    if (!addressToGeocode) { setWeatherError('No address available'); return; }
-    
-    const cacheKey = addressToGeocode.toLowerCase().trim();
-    const cached = localStorage.getItem('pool-weather-cache');
-    if (cached) {
-      try {
-        const cacheData = JSON.parse(cached);
-        if (cacheData.key === cacheKey && (Date.now() - cacheData.timestamp) < 3 * 60 * 60 * 1000) {
-          setWeatherData(cacheData.data);
-          setWeatherLocation(cacheData.location);
-          return;
-        }
-      } catch (e) { /* Invalid cache */ }
-    }
-    
-    const geoResult = await geocodeAddress(addressToGeocode);
-    if (!geoResult) { setWeatherError('Could not locate address'); return; }
-    
-    setWeatherLocation({ lat: geoResult.lat, lon: geoResult.lon, name: geoResult.formattedAddress });
-    const weather = await fetchWeatherForecast(geoResult.lat, geoResult.lon);
-    if (weather) {
-      localStorage.setItem('pool-weather-cache', JSON.stringify({
-        key: cacheKey, timestamp: Date.now(), data: weather,
-        location: { lat: geoResult.lat, lon: geoResult.lon, name: geoResult.formattedAddress }
-      }));
-    }
-  };
-
   const calculateChlorineDemand = (dayWeather, poolData = {}) => {
     const BASE_LOSS = 1.5;
     const uvFactor = 1 + ((dayWeather.uvIndex || 5) * 0.08);
@@ -701,12 +671,6 @@ Best regards,
     return '🌤️';
   };
 
-  useEffect(() => {
-    if (routeCustomers.length > 0 || companySettings.address) {
-      loadRouteWeather();
-    }
-  }, [routeCustomers.length, companySettings.address]);
-
   // Service functions
   // Open service completion modal
   const openCompleteServiceModal = (customer) => {
@@ -714,6 +678,45 @@ Best regards,
     setServiceChemicals([]);
     setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' });
     setShowCompleteServiceModal(true);
+    // Load weather for this customer's address
+    if (customer.address) {
+      loadWeatherForAddress(customer.address);
+    }
+  };
+  
+  // Load weather for a specific address
+  const loadWeatherForAddress = async (address) => {
+    if (!address) return;
+    
+    const cacheKey = address.toLowerCase().trim();
+    const cached = localStorage.getItem('pool-weather-cache');
+    if (cached) {
+      try {
+        const cacheData = JSON.parse(cached);
+        if (cacheData.key === cacheKey && (Date.now() - cacheData.timestamp) < 3 * 60 * 60 * 1000) {
+          setWeatherData(cacheData.data);
+          setWeatherLocation(cacheData.location);
+          return;
+        }
+      } catch (e) { /* Invalid cache */ }
+    }
+    
+    setWeatherLoading(true);
+    const geoResult = await geocodeAddress(address);
+    if (!geoResult) { 
+      setWeatherError('Could not locate address'); 
+      setWeatherLoading(false);
+      return; 
+    }
+    
+    setWeatherLocation({ lat: geoResult.lat, lon: geoResult.lon, name: geoResult.formattedAddress });
+    const weather = await fetchWeatherForecast(geoResult.lat, geoResult.lon);
+    if (weather) {
+      localStorage.setItem('pool-weather-cache', JSON.stringify({
+        key: cacheKey, timestamp: Date.now(), data: weather,
+        location: { lat: geoResult.lat, lon: geoResult.lon, name: geoResult.formattedAddress }
+      }));
+    }
   };
 
   // Add chemical to current service
@@ -4090,74 +4093,6 @@ Best regards,
                   </button>
                 )}
               </div>
-              
-              {/* Weather Panel - Mobile */}
-              {weatherData && weatherData.daily && (
-                <div className="bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl p-4 text-white shadow-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">🌤️</span>
-                      <span className="font-semibold text-sm">7-Day Forecast</span>
-                    </div>
-                    <button onClick={() => setShowWeatherPanel(!showWeatherPanel)} className="text-xs bg-white/20 px-2 py-1 rounded">
-                      {showWeatherPanel ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {showWeatherPanel && (
-                    <div>
-                      <div className="flex gap-1 overflow-x-auto pb-2">
-                        {weatherData.daily.time.map((date, i) => {
-                          const isToday = date === getLocalDateString();
-                          const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-                          return (
-                            <div key={date} className={`flex-shrink-0 w-14 text-center py-2 px-1 rounded-lg ${isToday ? 'bg-white/30' : 'bg-white/10'}`}>
-                              <div className="text-xs font-medium">{isToday ? 'Today' : dayName}</div>
-                              <div className="text-2xl my-1">{getWeatherIcon(weatherData.daily.weathercode[i])}</div>
-                              <div className="text-sm font-bold">{Math.round(weatherData.daily.temperature_2m_max[i])}°</div>
-                              <div className="text-xs opacity-80">UV {Math.round(weatherData.daily.uv_index_max[i])}</div>
-                              {weatherData.daily.precipitation_sum[i] > 0 && (
-                                <div className="text-xs text-cyan-200">💧{weatherData.daily.precipitation_sum[i].toFixed(1)}"</div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-white/20">
-                        {(() => {
-                          const weeklyLoss = weatherData.daily.time.reduce((total, date, i) => {
-                            return total + calculateChlorineDemand({
-                              tempMax: weatherData.daily.temperature_2m_max[i],
-                              uvIndex: weatherData.daily.uv_index_max[i],
-                              precipitation: weatherData.daily.precipitation_sum[i],
-                              sunshineDuration: weatherData.daily.sunshine_duration[i]
-                            }).predictedLoss;
-                          }, 0);
-                          const avgUV = weatherData.daily.uv_index_max.reduce((a, b) => a + b, 0) / 7;
-                          let demandLevel = 'LOW', demandColor = 'bg-green-400';
-                          if (weeklyLoss > 20) { demandLevel = 'EXTREME'; demandColor = 'bg-red-400'; }
-                          else if (weeklyLoss > 15) { demandLevel = 'HIGH'; demandColor = 'bg-orange-400'; }
-                          else if (weeklyLoss > 10) { demandLevel = 'MODERATE'; demandColor = 'bg-yellow-400'; }
-                          return (
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="text-xs opacity-80">Weekly Chlorine Demand</div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-xs px-2 py-0.5 rounded font-bold ${demandColor} text-gray-900`}>{demandLevel}</span>
-                                  <span className="text-sm">~{weeklyLoss.toFixed(1)} ppm</span>
-                                </div>
-                              </div>
-                              <div className="text-right text-xs">Avg UV: {avgUV.toFixed(1)}</div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {weatherLoading && (
-                <div className="bg-gray-100 rounded-xl p-4 text-center text-gray-500 animate-pulse">Loading weather...</div>
-              )}
             </div>
 
             {/* DESKTOP: Original Header */}
@@ -4240,117 +4175,6 @@ Best regards,
                 </div>
               )}
             </div>
-            
-            {/* Weather Panel - Desktop */}
-            {weatherData && weatherData.daily && (
-              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-3 flex items-center justify-between cursor-pointer"
-                  onClick={() => setShowWeatherPanel(!showWeatherPanel)}
-                >
-                  <div className="flex items-center gap-3 text-white">
-                    <span className="text-2xl">🌤️</span>
-                    <div>
-                      <div className="font-semibold">7-Day Weather Forecast</div>
-                      <div className="text-sm opacity-80">{weatherLocation?.name ? weatherLocation.name.split(',').slice(0, 2).join(',') : 'Loading...'}</div>
-                    </div>
-                  </div>
-                  <button className="text-white/80 hover:text-white text-sm">{showWeatherPanel ? '▲ Hide' : '▼ Show'}</button>
-                </div>
-                {showWeatherPanel && (
-                  <div className="p-6">
-                    <div className="grid grid-cols-7 gap-3 mb-6">
-                      {weatherData.daily.time.map((date, i) => {
-                        const isToday = date === getLocalDateString();
-                        const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-                        const dateNum = new Date(date + 'T12:00:00').getDate();
-                        return (
-                          <div key={date} className={`text-center p-3 rounded-xl ${isToday ? 'bg-blue-100 border-2 border-blue-400' : 'bg-gray-50 hover:bg-gray-100'}`}>
-                            <div className="text-sm font-medium text-gray-600">{isToday ? 'Today' : dayName}</div>
-                            <div className="text-xs text-gray-400">{dateNum}</div>
-                            <div className="text-4xl my-2">{getWeatherIcon(weatherData.daily.weathercode[i])}</div>
-                            <div className="text-lg font-bold text-gray-800">{Math.round(weatherData.daily.temperature_2m_max[i])}°F</div>
-                            <div className="text-sm text-gray-500">{Math.round(weatherData.daily.temperature_2m_min[i])}°</div>
-                            <div className="mt-2 text-xs">
-                              <span className={`inline-block px-2 py-0.5 rounded ${
-                                weatherData.daily.uv_index_max[i] >= 8 ? 'bg-red-100 text-red-700' :
-                                weatherData.daily.uv_index_max[i] >= 6 ? 'bg-orange-100 text-orange-700' :
-                                weatherData.daily.uv_index_max[i] >= 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-                              }`}>UV {Math.round(weatherData.daily.uv_index_max[i])}</span>
-                            </div>
-                            {weatherData.daily.precipitation_sum[i] > 0 && (
-                              <div className="text-xs text-blue-600 mt-1">💧 {weatherData.daily.precipitation_sum[i].toFixed(2)}"</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {(() => {
-                      const weeklyLoss = weatherData.daily.time.reduce((total, date, i) => {
-                        return total + calculateChlorineDemand({
-                          tempMax: weatherData.daily.temperature_2m_max[i],
-                          uvIndex: weatherData.daily.uv_index_max[i],
-                          precipitation: weatherData.daily.precipitation_sum[i],
-                          sunshineDuration: weatherData.daily.sunshine_duration[i]
-                        }).predictedLoss;
-                      }, 0);
-                      const avgDaily = weeklyLoss / 7;
-                      const avgUV = weatherData.daily.uv_index_max.reduce((a, b) => a + b, 0) / 7;
-                      const totalRain = weatherData.daily.precipitation_sum.reduce((a, b) => a + b, 0);
-                      const rainDays = weatherData.daily.precipitation_sum.filter(p => p > 0).length;
-                      let demandLevel = 'LOW', demandColor = '#22c55e', demandBg = 'bg-green-100';
-                      if (weeklyLoss > 20) { demandLevel = 'EXTREME'; demandColor = '#dc2626'; demandBg = 'bg-red-100'; }
-                      else if (weeklyLoss > 15) { demandLevel = 'HIGH'; demandColor = '#f97316'; demandBg = 'bg-orange-100'; }
-                      else if (weeklyLoss > 10) { demandLevel = 'MODERATE'; demandColor = '#eab308'; demandBg = 'bg-yellow-100'; }
-                      return (
-                        <div className={`${demandBg} rounded-xl p-4`}>
-                          <div className="flex items-center justify-between flex-wrap gap-4">
-                            <div>
-                              <div className="text-sm text-gray-600 mb-1">Predicted Chlorine Demand This Week</div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-xl font-black px-3 py-1 rounded-lg text-white" style={{ backgroundColor: demandColor }}>{demandLevel}</span>
-                                <div>
-                                  <div className="text-2xl font-bold text-gray-800">~{weeklyLoss.toFixed(1)} ppm</div>
-                                  <div className="text-sm text-gray-500">Total chlorine loss over 7 days</div>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4 text-center">
-                              <div className="bg-white rounded-lg p-3">
-                                <div className="text-2xl font-bold text-gray-800">{avgDaily.toFixed(1)}</div>
-                                <div className="text-xs text-gray-500">ppm/day avg</div>
-                              </div>
-                              <div className="bg-white rounded-lg p-3">
-                                <div className="text-2xl font-bold" style={{ color: avgUV >= 8 ? '#dc2626' : avgUV >= 6 ? '#f97316' : '#22c55e' }}>{avgUV.toFixed(1)}</div>
-                                <div className="text-xs text-gray-500">Avg UV</div>
-                              </div>
-                              <div className="bg-white rounded-lg p-3">
-                                <div className="text-2xl font-bold text-blue-600">{rainDays}</div>
-                                <div className="text-xs text-gray-500">Rain days</div>
-                              </div>
-                            </div>
-                          </div>
-                          {totalRain > 0.5 && (
-                            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                              <strong>⚠️ Rain Alert:</strong> {totalRain.toFixed(2)}" expected. Consider scheduling a follow-up check.
-                            </div>
-                          )}
-                          <div className="mt-4 p-3 bg-white rounded-lg text-sm text-gray-600">
-                            <span className="font-medium text-gray-700">💡 Dosing Tip:</span> Target <strong>{Math.min(5, 3 + avgDaily * 0.5).toFixed(1)} ppm FC</strong> at service (with 30-50 ppm CYA).
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    <div className="mt-3 text-xs text-gray-400 text-center">
-                      Weather data from Open-Meteo • <button onClick={loadRouteWeather} className="text-blue-500 hover:underline">Refresh</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {weatherLoading && (
-              <div className="bg-white rounded-xl p-6 text-center text-gray-500 animate-pulse">Loading weather forecast...</div>
-            )}
 
             {/* Admin-only: Customer Selection Grid */}
             {isAdminMode && (
@@ -6687,6 +6511,79 @@ Best regards,
                   {serviceToComplete.poolType && <span className="capitalize">{serviceToComplete.poolType} Pool</span>}
                 </div>
               </div>
+              
+              {/* Weather Forecast Panel */}
+              {weatherData && weatherData.daily ? (
+                <div className="bg-gradient-to-r from-sky-500 to-blue-600 rounded-lg p-3 mb-4 text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span>🌤️</span>
+                      <span className="font-semibold text-sm">7-Day Forecast</span>
+                    </div>
+                    <button onClick={() => setShowWeatherPanel(!showWeatherPanel)} className="text-xs bg-white/20 px-2 py-0.5 rounded">
+                      {showWeatherPanel ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {showWeatherPanel && (
+                    <div>
+                      <div className="flex gap-1 overflow-x-auto pb-2">
+                        {weatherData.daily.time.map((date, i) => {
+                          const isToday = date === getLocalDateString();
+                          const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                          return (
+                            <div key={date} className={`flex-shrink-0 w-12 text-center py-1 px-1 rounded ${isToday ? 'bg-white/30' : 'bg-white/10'}`}>
+                              <div className="text-xs">{isToday ? 'Today' : dayName}</div>
+                              <div className="text-lg">{getWeatherIcon(weatherData.daily.weathercode[i])}</div>
+                              <div className="text-xs font-bold">{Math.round(weatherData.daily.temperature_2m_max[i])}°</div>
+                              <div className="text-xs opacity-70">UV {Math.round(weatherData.daily.uv_index_max[i])}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-white/20 text-sm">
+                        {(() => {
+                          const weeklyLoss = weatherData.daily.time.reduce((total, d, i) => {
+                            return total + calculateChlorineDemand({
+                              tempMax: weatherData.daily.temperature_2m_max[i],
+                              uvIndex: weatherData.daily.uv_index_max[i],
+                              precipitation: weatherData.daily.precipitation_sum[i],
+                              sunshineDuration: weatherData.daily.sunshine_duration[i]
+                            }).predictedLoss;
+                          }, 0);
+                          let demandLevel = 'LOW', demandColor = 'bg-green-400';
+                          if (weeklyLoss > 20) { demandLevel = 'EXTREME'; demandColor = 'bg-red-400'; }
+                          else if (weeklyLoss > 15) { demandLevel = 'HIGH'; demandColor = 'bg-orange-400'; }
+                          else if (weeklyLoss > 10) { demandLevel = 'MODERATE'; demandColor = 'bg-yellow-400'; }
+                          const avgDaily = weeklyLoss / 7;
+                          const targetFC = Math.min(5, 3 + avgDaily * 0.5).toFixed(1);
+                          return (
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <span>Chlorine Demand:</span>
+                                <span className={`${demandColor} text-gray-900 px-2 py-0.5 rounded text-xs font-bold`}>{demandLevel}</span>
+                              </div>
+                              <div className="text-xs mt-1 opacity-90">
+                                ~{weeklyLoss.toFixed(1)} ppm loss/week • Target FC: <strong>{targetFC} ppm</strong>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : weatherLoading ? (
+                <div className="bg-gray-100 rounded-lg p-3 mb-4 text-center text-gray-500 text-sm animate-pulse">
+                  Loading weather...
+                </div>
+              ) : (
+                <button 
+                  onClick={loadRouteWeather}
+                  className="w-full bg-blue-50 text-blue-600 rounded-lg p-3 mb-4 text-sm hover:bg-blue-100"
+                >
+                  🌤️ Load Weather Forecast
+                </button>
+              )}
 
               {/* Service Cost */}
               <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg mb-4">
