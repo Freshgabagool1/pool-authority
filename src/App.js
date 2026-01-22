@@ -595,13 +595,19 @@ Best regards,
   
   const geocodeAddress = async (address) => {
     try {
+      // Use free Nominatim (OpenStreetMap) geocoding - no API key needed
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_KEY}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        { headers: { 'User-Agent': 'PoolAuthority/1.0' } }
       );
       const data = await response.json();
-      if (data.results && data.results.length > 0) {
-        const location = data.results[0].geometry.location;
-        return { lat: location.lat, lon: location.lng, formattedAddress: data.results[0].formatted_address };
+      console.log('Nominatim response:', data);
+      if (data && data.length > 0) {
+        return { 
+          lat: parseFloat(data[0].lat), 
+          lon: parseFloat(data[0].lon), 
+          formattedAddress: data[0].display_name 
+        };
       }
       return null;
     } catch (error) {
