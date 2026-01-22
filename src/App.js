@@ -6578,7 +6578,7 @@ Best regards,
                 </div>
               ) : (
                 <button 
-                  onClick={loadRouteWeather}
+                  onClick={() => loadWeatherForAddress(serviceToComplete?.address)}
                   className="w-full bg-blue-50 text-blue-600 rounded-lg p-3 mb-4 text-sm hover:bg-blue-100"
                 >
                   🌤️ Load Weather Forecast
