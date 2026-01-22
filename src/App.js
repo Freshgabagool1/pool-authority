@@ -686,7 +686,12 @@ Best regards,
   
   // Load weather for a specific address
   const loadWeatherForAddress = async (address) => {
-    if (!address) return;
+    console.log('loadWeatherForAddress called with:', address);
+    if (!address) {
+      console.log('No address provided');
+      setWeatherError('No address available');
+      return;
+    }
     
     const cacheKey = address.toLowerCase().trim();
     const cached = localStorage.getItem('pool-weather-cache');
@@ -694,6 +699,7 @@ Best regards,
       try {
         const cacheData = JSON.parse(cached);
         if (cacheData.key === cacheKey && (Date.now() - cacheData.timestamp) < 3 * 60 * 60 * 1000) {
+          console.log('Using cached weather data');
           setWeatherData(cacheData.data);
           setWeatherLocation(cacheData.location);
           return;
@@ -702,7 +708,10 @@ Best regards,
     }
     
     setWeatherLoading(true);
+    setWeatherError(null);
+    console.log('Geocoding address...');
     const geoResult = await geocodeAddress(address);
+    console.log('Geocode result:', geoResult);
     if (!geoResult) { 
       setWeatherError('Could not locate address'); 
       setWeatherLoading(false);
@@ -710,7 +719,9 @@ Best regards,
     }
     
     setWeatherLocation({ lat: geoResult.lat, lon: geoResult.lon, name: geoResult.formattedAddress });
+    console.log('Fetching weather for:', geoResult.lat, geoResult.lon);
     const weather = await fetchWeatherForecast(geoResult.lat, geoResult.lon);
+    console.log('Weather result:', weather);
     if (weather) {
       localStorage.setItem('pool-weather-cache', JSON.stringify({
         key: cacheKey, timestamp: Date.now(), data: weather,
@@ -6575,6 +6586,16 @@ Best regards,
               ) : weatherLoading ? (
                 <div className="bg-gray-100 rounded-lg p-3 mb-4 text-center text-gray-500 text-sm animate-pulse">
                   Loading weather...
+                </div>
+              ) : weatherError ? (
+                <div className="bg-red-50 rounded-lg p-3 mb-4 text-center text-red-600 text-sm">
+                  {weatherError}
+                  <button 
+                    onClick={() => loadWeatherForAddress(serviceToComplete?.address)}
+                    className="ml-2 underline"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : (
                 <button 
