@@ -4173,7 +4173,44 @@ Best regards,
                     Jump to Today
                   </button>
                 )}
+                
+                {/* Map & Navigate Buttons - Mobile */}
+                {routeCustomers.length > 0 && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setShowMap(!showMap)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-white/20 rounded-lg text-sm font-medium"
+                    >
+                      <Icons.Map />
+                      {showMap ? 'Hide Map' : 'Show Map'}
+                    </button>
+                    <a
+                      href={getGoogleMapsRouteUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-500 rounded-lg text-sm font-medium"
+                    >
+                      <Icons.Navigation />
+                      Navigate
+                    </a>
+                  </div>
+                )}
               </div>
+              
+              {/* Map Display - Mobile */}
+              {showMap && routeCustomers.length > 0 && (
+                <div className="rounded-xl overflow-hidden border-2 border-gray-200 mb-3">
+                  <iframe
+                    src={getEmbedMapUrl()}
+                    width="100%"
+                    height="250"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              )}
               
               {/* Employee Filter Pills - Mobile */}
               <div className="flex gap-2 overflow-x-auto py-3 px-1 -mx-1">
@@ -4521,17 +4558,43 @@ Best regards,
                     <p className="text-sm text-gray-500">{routeCustomers.length} customers</p>
                   </div>
                   {routeCustomers.length > 0 && (
-                    <a
-                      href={getGoogleMapsRouteUrl()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg"
-                    >
-                      <Icons.Navigation />
-                      Start Route
-                    </a>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowMap(!showMap)}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        <Icons.Map />
+                        {showMap ? 'Hide Map' : 'Show Map'}
+                      </button>
+                      <a
+                        href={getGoogleMapsRouteUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg"
+                      >
+                        <Icons.Navigation />
+                        Start Route
+                      </a>
+                    </div>
                   )}
                 </div>
+                
+                {/* Map Display - Tech Mode Desktop */}
+                {showMap && routeCustomers.length > 0 && (
+                  <div className="p-4 border-b">
+                    <div className="rounded-lg overflow-hidden border-2 border-gray-200">
+                      <iframe
+                        src={getEmbedMapUrl()}
+                        width="100%"
+                        height="300"
+                        style={{ border: 0 }}
+                        allowFullScreen
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    </div>
+                  </div>
+                )}
                 
                 {routeCustomers.length > 0 ? (
                   <div className="divide-y">
@@ -9797,7 +9860,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.7.1
+        v3.7.2
       </div>
     </div>
   );
