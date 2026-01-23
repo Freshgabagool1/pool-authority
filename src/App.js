@@ -595,18 +595,18 @@ Best regards,
   
   const geocodeAddress = async (address) => {
     try {
-      // Use free Nominatim (OpenStreetMap) geocoding - no API key needed
+      // Use Open-Meteo's free geocoding API - no API key needed, no CORS issues
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
-        { headers: { 'User-Agent': 'PoolAuthority/1.0' } }
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(address)}&count=1&language=en&format=json`
       );
       const data = await response.json();
-      console.log('Nominatim response:', data);
-      if (data && data.length > 0) {
+      console.log('Open-Meteo geocode response:', data);
+      if (data && data.results && data.results.length > 0) {
+        const result = data.results[0];
         return { 
-          lat: parseFloat(data[0].lat), 
-          lon: parseFloat(data[0].lon), 
-          formattedAddress: data[0].display_name 
+          lat: result.latitude, 
+          lon: result.longitude, 
+          formattedAddress: `${result.name}, ${result.admin1 || ''}, ${result.country || ''}`.replace(/, ,/g, ',')
         };
       }
       return null;
