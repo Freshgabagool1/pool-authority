@@ -649,9 +649,10 @@ Best regards,
       const params = new URLSearchParams({
         latitude: lat.toFixed(4),
         longitude: lon.toFixed(4),
-        daily: 'temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,precipitation_probability_max,weathercode,sunshine_duration',
+        daily: 'temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,precipitation_probability_max,weathercode,sunshine_duration,windspeed_10m_max',
         temperature_unit: 'fahrenheit',
         precipitation_unit: 'inch',
+        windspeed_unit: 'mph',
         timezone: 'auto',
         forecast_days: 7
       });
@@ -670,26 +671,102 @@ Best regards,
   };
 
   const calculateChlorineDemand = (dayWeather, poolData = {}) => {
-    const BASE_LOSS = 1.5;
-    const uvFactor = 1 + ((dayWeather.uvIndex || 5) * 0.08);
-    const cya = poolData.cya || 40;
-    let cyaFactor = cya < 20 ? 3.0 : cya < 30 ? 1.5 : cya > 80 ? 0.8 : 1.0;
+    // CYA is the PRIMARY factor in chlorine protection from UV
+    // Without CYA: 75-90% chlorine loss in 2-3 hours of direct sunlight
+    // With proper CYA (30-50 ppm): ~10-20% daily loss
+    
+    const cya = poolData.cya || 0; // Default to 0 (no protection) if not provided
+    const uvIndex = dayWeather.uvIndex || 5;
     const temp = dayWeather.tempMax || 85;
-    const tempFactor = temp > 80 ? 1 + ((temp - 80) / 20) : 1;
-    const sunshineHours = (dayWeather.sunshineDuration || 28800) / 3600;
-    const sunshineFactor = Math.max(0.5, sunshineHours / 8);
     const precipitation = dayWeather.precipitation || 0;
-    const rainFactor = precipitation > 0 ? 1.5 + (precipitation * 0.2) : 1;
-    const isNiceWeather = temp >= 75 && temp <= 92 && (dayWeather.uvIndex || 5) >= 4 && precipitation === 0;
+    const sunshineHours = (dayWeather.sunshineDuration || 28800) / 3600;
+    const windSpeed = dayWeather.windSpeed || 0; // mph
+    
+    // Base loss depends heavily on CYA level
+    let baseLoss;
+    if (cya === 0) {
+      // No CYA = catastrophic UV loss (75-90% in hours)
+      baseLoss = 6.0; // ~6 ppm/day loss without protection
+    } else if (cya < 20) {
+      baseLoss = 3.5; // Minimal protection
+    } else if (cya < 30) {
+      baseLoss = 2.0; // Some protection
+    } else if (cya <= 50) {
+      baseLoss = 1.2; // Optimal range (30-50 ppm)
+    } else if (cya <= 80) {
+      baseLoss = 1.0; // Good protection but approaching over-stabilized
+    } else {
+      baseLoss = 0.8; // Over-stabilized - chlorine locked up, but less effective
+    }
+    
+    // UV Factor - higher UV = more degradation (even with CYA)
+    // UV 1-2: Low, 3-5: Moderate, 6-7: High, 8-10: Very High, 11+: Extreme
+    let uvFactor = 1.0;
+    if (uvIndex >= 11) uvFactor = 1.4;      // Extreme UV
+    else if (uvIndex >= 8) uvFactor = 1.25; // Very High UV
+    else if (uvIndex >= 6) uvFactor = 1.15; // High UV
+    else if (uvIndex >= 3) uvFactor = 1.0;  // Moderate UV (baseline)
+    else uvFactor = 0.8;                     // Low UV
+    
+    // Temperature Factor - affects chlorine CONSUMPTION (not UV loss)
+    // Warmer water = faster reactions, more bacteria growth, more evaporation
+    let tempFactor = 1.0;
+    if (temp >= 95) tempFactor = 1.4;       // Very hot - significant increase
+    else if (temp >= 90) tempFactor = 1.25; // Hot
+    else if (temp >= 85) tempFactor = 1.15; // Warm
+    else if (temp >= 80) tempFactor = 1.05; // Mild
+    else if (temp < 70) tempFactor = 0.85;  // Cool - slower consumption
+    
+    // Sunshine duration factor (normalize to 8-hour day)
+    const sunshineFactor = Math.max(0.3, sunshineHours / 8);
+    
+    // Rain Factor - dilution and contamination
+    let rainFactor = 1.0;
+    if (precipitation > 1.0) rainFactor = 1.5;      // Heavy rain - major contamination
+    else if (precipitation > 0.5) rainFactor = 1.3; // Moderate rain
+    else if (precipitation > 0.1) rainFactor = 1.15; // Light rain
+    
+    // Wind Factor - debris contamination (leaves, pollen, dust)
+    // Higher wind = more organic matter blown into pool = more chlorine demand
+    let windFactor = 1.0;
+    if (windSpeed >= 25) windFactor = 1.35;      // Very windy - lots of debris
+    else if (windSpeed >= 15) windFactor = 1.2;  // Windy
+    else if (windSpeed >= 10) windFactor = 1.1;  // Breezy
+    // Calm winds don't add demand
+    
+    // Bather load estimate (nice weather = more swimming)
+    const isNiceWeather = temp >= 75 && temp <= 92 && uvIndex >= 4 && precipitation < 0.1 && windSpeed < 20;
     const dayOfWeek = dayWeather.date ? new Date(dayWeather.date).getDay() : 3;
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const batherFactor = isNiceWeather ? (isWeekend ? 1.8 : 1.3) : 1.0;
-    const dailyLoss = BASE_LOSS * uvFactor * cyaFactor * tempFactor * sunshineFactor * rainFactor * batherFactor;
+    const batherFactor = isNiceWeather ? (isWeekend ? 1.3 : 1.15) : 1.0;
+    
+    // Calculate daily loss
+    const dailyLoss = baseLoss * uvFactor * tempFactor * sunshineFactor * rainFactor * windFactor * batherFactor;
+    
+    // Determine demand level based on CYA-adjusted expectations
     let demandLevel = 'LOW', demandColor = '#22c55e';
-    if (dailyLoss > 4) { demandLevel = 'EXTREME'; demandColor = '#dc2626'; }
-    else if (dailyLoss > 3) { demandLevel = 'HIGH'; demandColor = '#f97316'; }
-    else if (dailyLoss > 2) { demandLevel = 'MODERATE'; demandColor = '#eab308'; }
-    return { predictedLoss: Math.round(dailyLoss * 10) / 10, demandLevel, demandColor };
+    if (cya === 0) {
+      // Without CYA, ANY sun is extreme
+      demandLevel = 'EXTREME'; 
+      demandColor = '#dc2626';
+    } else if (dailyLoss > 3.5) { 
+      demandLevel = 'EXTREME'; 
+      demandColor = '#dc2626'; 
+    } else if (dailyLoss > 2.5) { 
+      demandLevel = 'HIGH'; 
+      demandColor = '#f97316'; 
+    } else if (dailyLoss > 1.5) { 
+      demandLevel = 'MODERATE'; 
+      demandColor = '#eab308'; 
+    }
+    
+    return { 
+      predictedLoss: Math.round(dailyLoss * 10) / 10, 
+      demandLevel, 
+      demandColor,
+      cyaStatus: cya === 0 ? 'NONE' : cya < 30 ? 'LOW' : cya <= 50 ? 'OPTIMAL' : cya <= 80 ? 'HIGH' : 'OVER',
+      factors: { uvFactor, tempFactor, rainFactor, windFactor, batherFactor }
+    };
   };
 
   const getWeatherIcon = (code) => {
@@ -6621,29 +6698,73 @@ Best regards,
                       </div>
                       <div className="mt-2 pt-2 border-t border-white/20 text-sm">
                         {(() => {
+                          // Use CYA from water test input, or 0 if not entered
+                          const cyaLevel = parseFloat(serviceWaterTest.cya) || 0;
+                          
                           const weeklyLoss = weatherData.daily.time.reduce((total, d, i) => {
                             return total + calculateChlorineDemand({
+                              date: d,
                               tempMax: weatherData.daily.temperature_2m_max[i],
                               uvIndex: weatherData.daily.uv_index_max[i],
                               precipitation: weatherData.daily.precipitation_sum[i],
-                              sunshineDuration: weatherData.daily.sunshine_duration[i]
-                            }).predictedLoss;
+                              sunshineDuration: weatherData.daily.sunshine_duration[i],
+                              windSpeed: weatherData.daily.windspeed_10m_max?.[i] || 0
+                            }, { cya: cyaLevel }).predictedLoss;
                           }, 0);
+                          
+                          // Get demand info from first day for CYA status
+                          const todayWind = weatherData.daily.windspeed_10m_max?.[0] || 0;
+                          const demandInfo = calculateChlorineDemand({
+                            tempMax: weatherData.daily.temperature_2m_max[0],
+                            uvIndex: weatherData.daily.uv_index_max[0],
+                            precipitation: weatherData.daily.precipitation_sum[0],
+                            sunshineDuration: weatherData.daily.sunshine_duration[0],
+                            windSpeed: todayWind
+                          }, { cya: cyaLevel });
+                          
+                          // Calculate averages for display
+                          const avgWind = (weatherData.daily.windspeed_10m_max?.reduce((a, b) => a + b, 0) || 0) / 7;
+                          const maxWind = Math.max(...(weatherData.daily.windspeed_10m_max || [0]));
+                          
                           let demandLevel = 'LOW', demandColor = 'bg-green-400';
-                          if (weeklyLoss > 20) { demandLevel = 'EXTREME'; demandColor = 'bg-red-400'; }
-                          else if (weeklyLoss > 15) { demandLevel = 'HIGH'; demandColor = 'bg-orange-400'; }
-                          else if (weeklyLoss > 10) { demandLevel = 'MODERATE'; demandColor = 'bg-yellow-400'; }
+                          if (cyaLevel === 0) { demandLevel = 'UNKNOWN'; demandColor = 'bg-gray-400'; }
+                          else if (weeklyLoss > 20) { demandLevel = 'EXTREME'; demandColor = 'bg-red-400'; }
+                          else if (weeklyLoss > 14) { demandLevel = 'HIGH'; demandColor = 'bg-orange-400'; }
+                          else if (weeklyLoss > 9) { demandLevel = 'MODERATE'; demandColor = 'bg-yellow-400'; }
+                          
                           const avgDaily = weeklyLoss / 7;
-                          const targetFC = Math.min(5, 3 + avgDaily * 0.5).toFixed(1);
+                          // Target FC based on CYA (FC should be ~7.5% of CYA for proper sanitation)
+                          const minFC = cyaLevel > 0 ? Math.max(2, cyaLevel * 0.075) : 3;
+                          const targetFC = Math.min(5, minFC + avgDaily * 0.3).toFixed(1);
+                          
                           return (
                             <div>
+                              {cyaLevel === 0 ? (
+                                <div className="text-xs bg-white/20 rounded p-2 mb-2">
+                                  ⚠️ Enter CYA reading below for accurate chlorine demand prediction
+                                </div>
+                              ) : (
+                                <div className="text-xs mb-2 opacity-90">
+                                  CYA: {cyaLevel} ppm ({demandInfo.cyaStatus === 'OPTIMAL' ? '✓ Optimal' : 
+                                    demandInfo.cyaStatus === 'LOW' ? '⚠️ Low - add stabilizer' :
+                                    demandInfo.cyaStatus === 'HIGH' ? '⚠️ High' : 
+                                    demandInfo.cyaStatus === 'OVER' ? '❌ Over-stabilized' : ''})
+                                </div>
+                              )}
                               <div className="flex items-center justify-between">
                                 <span>Chlorine Demand:</span>
                                 <span className={`${demandColor} text-gray-900 px-2 py-0.5 rounded text-xs font-bold`}>{demandLevel}</span>
                               </div>
-                              <div className="text-xs mt-1 opacity-90">
-                                ~{weeklyLoss.toFixed(1)} ppm loss/week • Target FC: <strong>{targetFC} ppm</strong>
-                              </div>
+                              {cyaLevel > 0 && (
+                                <div className="text-xs mt-1 opacity-90">
+                                  ~{avgDaily.toFixed(1)} ppm/day • Target FC: <strong>{targetFC} ppm</strong>
+                                </div>
+                              )}
+                              {maxWind >= 15 && (
+                                <div className="text-xs mt-1 opacity-80">
+                                  💨 Wind: avg {avgWind.toFixed(0)} mph, max {maxWind.toFixed(0)} mph - expect debris
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -9676,7 +9797,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.6.0
+        v3.7.1
       </div>
     </div>
   );
