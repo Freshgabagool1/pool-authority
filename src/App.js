@@ -371,7 +371,8 @@ Best regards,
   const [previewTemplate, setPreviewTemplate] = useState(null);
 
   const [newCustomer, setNewCustomer] = useState({
-    name: '', address: '', poolType: 'inground', phone: '', email: '',
+    name: '', street: '', city: '', state: 'NY', zip: '', 
+    poolType: 'inground', phone: '', email: '',
     weeklyRate: 100, gateCode: '', dogName: '', notes: '', 
     poolGallons: 15000, isSaltPool: false, targetSalt: 3200
   });
@@ -530,10 +531,17 @@ Best regards,
 
   // Customer functions
   const addCustomer = () => {
-    if (newCustomer.name && newCustomer.address) {
-      const customer = { ...newCustomer, id: Date.now(), createdDate: new Date().toISOString() };
+    if (newCustomer.name && newCustomer.street && newCustomer.city) {
+      // Combine address fields into single address string for display/maps
+      const fullAddress = `${newCustomer.street}, ${newCustomer.city}, ${newCustomer.state} ${newCustomer.zip}`.trim();
+      const customer = { 
+        ...newCustomer, 
+        address: fullAddress,
+        id: Date.now(), 
+        createdDate: new Date().toISOString() 
+      };
       saveCustomers([...customers, customer]);
-      setNewCustomer({ name: '', address: '', poolType: 'inground', phone: '', email: '', weeklyRate: 100, gateCode: '', dogName: '', notes: '' });
+      setNewCustomer({ name: '', street: '', city: '', state: 'NY', zip: '', poolType: 'inground', phone: '', email: '', weeklyRate: 100, gateCode: '', dogName: '', notes: '', poolGallons: 15000, isSaltPool: false, targetSalt: 3200 });
       setShowAddCustomer(false);
     }
   };
@@ -593,22 +601,40 @@ Best regards,
   // WEATHER API FUNCTIONS
   // ============================================
   
-  const geocodeAddress = async (address) => {
+  const geocodeAddress = async (address, city = null) => {
     try {
-      // Use Open-Meteo's free geocoding API - no API key needed, no CORS issues
+      // If city is provided directly, use it (more reliable)
+      let searchQuery = city || address;
+      
+      // If no city provided, try to extract from address string
+      if (!city && address) {
+        const parts = address.split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          // Take city part (usually second to last or last before zip)
+          searchQuery = parts[parts.length - 2] || parts[parts.length - 1];
+          // Remove any zip codes
+          searchQuery = searchQuery.replace(/\d{5}(-\d{4})?/, '').trim();
+        }
+      }
+      
+      console.log('Geocoding search query:', searchQuery);
+      
       const response = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(address)}&count=1&language=en&format=json`
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=5&language=en&format=json`
       );
       const data = await response.json();
       console.log('Open-Meteo geocode response:', data);
+      
       if (data && data.results && data.results.length > 0) {
-        const result = data.results[0];
+        // Try to find a US result first
+        const usResult = data.results.find(r => r.country_code === 'US') || data.results[0];
         return { 
-          lat: result.latitude, 
-          lon: result.longitude, 
-          formattedAddress: `${result.name}, ${result.admin1 || ''}, ${result.country || ''}`.replace(/, ,/g, ',')
+          lat: usResult.latitude, 
+          lon: usResult.longitude, 
+          formattedAddress: `${usResult.name}, ${usResult.admin1 || ''}, ${usResult.country || ''}`.replace(/, ,/g, ',')
         };
       }
+      
       return null;
     } catch (error) {
       console.error('Geocoding error:', error);
@@ -684,22 +710,22 @@ Best regards,
     setServiceChemicals([]);
     setServiceWaterTest({ chlorine: '', ph: '', alkalinity: '', cya: '', hardness: '', salt: '', phosphates: '', temp: '', notes: '' });
     setShowCompleteServiceModal(true);
-    // Load weather for this customer's address
-    if (customer.address) {
-      loadWeatherForAddress(customer.address);
+    // Load weather for this customer's location
+    if (customer.city || customer.address) {
+      loadWeatherForAddress(customer.address, customer.city);
     }
   };
   
   // Load weather for a specific address
-  const loadWeatherForAddress = async (address) => {
-    console.log('loadWeatherForAddress called with:', address);
-    if (!address) {
+  const loadWeatherForAddress = async (address, city = null) => {
+    console.log('loadWeatherForAddress called with:', address, 'city:', city);
+    if (!address && !city) {
       console.log('No address provided');
       setWeatherError('No address available');
       return;
     }
     
-    const cacheKey = address.toLowerCase().trim();
+    const cacheKey = (city || address).toLowerCase().trim();
     const cached = localStorage.getItem('pool-weather-cache');
     if (cached) {
       try {
@@ -715,8 +741,8 @@ Best regards,
     
     setWeatherLoading(true);
     setWeatherError(null);
-    console.log('Geocoding address...');
-    const geoResult = await geocodeAddress(address);
+    console.log('Geocoding...');
+    const geoResult = await geocodeAddress(address, city);
     console.log('Geocode result:', geoResult);
     if (!geoResult) { 
       setWeatherError('Could not locate address'); 
@@ -5071,16 +5097,52 @@ Best regards,
                         placeholder="John Smith"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                      <input
-                        type="text"
-                        value={newCustomer.address}
-                        onChange={e => setNewCustomer({ ...newCustomer, address: e.target.value })}
-                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="123 Main St, City, State"
-                      />
+                    
+                    {/* Structured Address Fields */}
+                    <div className="bg-gray-50 p-3 rounded-lg space-y-3">
+                      <label className="block text-sm font-medium text-gray-700">Address *</label>
+                      <div>
+                        <input
+                          type="text"
+                          value={newCustomer.street}
+                          onChange={e => setNewCustomer({ ...newCustomer, street: e.target.value })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Street Address (e.g. 8142 Solomon Seal Ln)"
+                        />
+                      </div>
+                      <div className="grid grid-cols-6 gap-2">
+                        <div className="col-span-3">
+                          <input
+                            type="text"
+                            value={newCustomer.city}
+                            onChange={e => setNewCustomer({ ...newCustomer, city: e.target.value })}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="City"
+                          />
+                        </div>
+                        <div className="col-span-1">
+                          <input
+                            type="text"
+                            value={newCustomer.state}
+                            onChange={e => setNewCustomer({ ...newCustomer, state: e.target.value.toUpperCase().slice(0, 2) })}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center"
+                            placeholder="ST"
+                            maxLength={2}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <input
+                            type="text"
+                            value={newCustomer.zip}
+                            onChange={e => setNewCustomer({ ...newCustomer, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="ZIP"
+                            maxLength={5}
+                          />
+                        </div>
+                      </div>
                     </div>
+                    
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
@@ -6597,7 +6659,7 @@ Best regards,
                 <div className="bg-red-50 rounded-lg p-3 mb-4 text-center text-red-600 text-sm">
                   {weatherError}
                   <button 
-                    onClick={() => loadWeatherForAddress(serviceToComplete?.address)}
+                    onClick={() => loadWeatherForAddress(serviceToComplete?.address, serviceToComplete?.city)}
                     className="ml-2 underline"
                   >
                     Retry
@@ -6605,7 +6667,7 @@ Best regards,
                 </div>
               ) : (
                 <button 
-                  onClick={() => loadWeatherForAddress(serviceToComplete?.address)}
+                  onClick={() => loadWeatherForAddress(serviceToComplete?.address, serviceToComplete?.city)}
                   className="w-full bg-blue-50 text-blue-600 rounded-lg p-3 mb-4 text-sm hover:bg-blue-100"
                 >
                   🌤️ Load Weather Forecast
