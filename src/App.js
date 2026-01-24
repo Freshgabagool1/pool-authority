@@ -5623,32 +5623,36 @@ Best regards,
         {activeTab === 'recurring' && (
           <div className="space-y-6">
             {/* Add Recurring Service */}
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Set Up Recurring Service</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                  <select
-                    id="recurringCustomer"
-                    className="w-full px-4 py-2 border rounded-lg"
-                  >
-                    <option value="">Select customer...</option>
-                    {customers.filter(c => !recurringServices.find(r => r.customerId === c.id && r.active)).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
+            <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-4">Set Up Recurring Service</h2>
+              
+              {/* Row 1: Customer */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                <select
+                  id="recurringCustomer"
+                  className="w-full px-3 py-2 border rounded-lg text-base"
+                >
+                  <option value="">Select customer...</option>
+                  {customers.filter(c => !recurringServices.find(r => r.customerId === c.id && r.active)).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Row 2: Frequency & Day */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
-                  <select id="recurringFrequency" className="w-full px-4 py-2 border rounded-lg">
+                  <select id="recurringFrequency" className="w-full px-3 py-2 border rounded-lg text-base">
                     <option value="weekly">Weekly</option>
                     <option value="biweekly">Bi-Weekly</option>
                     <option value="monthly">Monthly</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
-                  <select id="recurringDay" className="w-full px-4 py-2 border rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+                  <select id="recurringDay" className="w-full px-3 py-2 border rounded-lg text-base">
                     <option value="1">Monday</option>
                     <option value="2">Tuesday</option>
                     <option value="3">Wednesday</option>
@@ -5659,38 +5663,42 @@ Best regards,
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mt-4">
+              
+              {/* Row 3: Start Date & Time */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                   <input
                     type="date"
                     id="recurringStart"
                     defaultValue={getLocalDateString()}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-3 py-2 border rounded-lg text-base"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Scheduled Time <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
                   <input
                     type="time"
                     id="recurringTime"
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-3 py-2 border rounded-lg text-base"
+                    placeholder="Optional"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assign To <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <select id="recurringEmployee" className="w-full px-4 py-2 border rounded-lg">
-                    <option value="">Unassigned</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
+              
+              {/* Row 4: Assign To */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assign To <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <select id="recurringEmployee" className="w-full px-3 py-2 border rounded-lg text-base">
+                  <option value="">Unassigned</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+              
               <button
                 onClick={() => {
                   const customerId = parseInt(document.getElementById('recurringCustomer').value);
@@ -5706,7 +5714,7 @@ Best regards,
                     document.getElementById('recurringEmployee').value = '';
                   }
                 }}
-                className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                className="w-full py-3 bg-purple-600 text-white rounded-lg font-medium active:bg-purple-700"
               >
                 Add Recurring Service
               </button>
@@ -7260,18 +7268,18 @@ Best regards,
         {activeTab === 'chemicals' && (
           <div className="space-y-6">
             {/* Chemical Usage Chart */}
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800">Chemical Usage Tracking</h2>
+            <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                <h2 className="text-lg md:text-xl font-bold text-gray-800">Chemical Usage Tracking</h2>
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   {['weekly', 'monthly', 'annual'].map(scale => (
                     <button
                       key={scale}
                       onClick={() => setChemicalChartScale(scale)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                         chemicalChartScale === scale 
                           ? 'bg-teal-600 text-white shadow' 
-                          : 'text-gray-600 hover:bg-gray-200'
+                          : 'text-gray-600 active:bg-gray-200'
                       }`}
                     >
                       {scale.charAt(0).toUpperCase() + scale.slice(1)}
@@ -7411,37 +7419,39 @@ Best regards,
                         placeholder="Chlorine tablets"
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Qty</label>
                         <input
                           type="number"
+                          inputMode="decimal"
                           value={newChemical.quantity}
                           onChange={e => setNewChemical({ ...newChemical, quantity: parseFloat(e.target.value) || 0 })}
-                          className="w-full px-4 py-2 border rounded-lg"
+                          className="w-full px-2 py-2 border rounded-lg text-base"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Unit</label>
                         <select
                           value={newChemical.unit}
                           onChange={e => setNewChemical({ ...newChemical, unit: e.target.value })}
-                          className="w-full px-4 py-2 border rounded-lg"
+                          className="w-full px-2 py-2 border rounded-lg text-base"
                         >
                           <option value="lbs">lbs</option>
-                          <option value="gal">gallons</option>
+                          <option value="gal">gal</option>
                           <option value="oz">oz</option>
-                          <option value="tablets">tablets</option>
+                          <option value="tablets">tabs</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">$/Unit</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">$/Unit</label>
                         <input
                           type="number"
+                          inputMode="decimal"
                           step="0.01"
                           value={newChemical.costPerUnit}
                           onChange={e => setNewChemical({ ...newChemical, costPerUnit: parseFloat(e.target.value) || 0 })}
-                          className="w-full px-4 py-2 border rounded-lg"
+                          className="w-full px-2 py-2 border rounded-lg text-base"
                         />
                       </div>
                     </div>
@@ -8448,38 +8458,42 @@ Best regards,
         {/* HISTORY TAB */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center flex-wrap gap-3">
-              <h2 className="text-xl font-bold text-gray-800">Service History</h2>
-              <div className="flex items-center gap-3 flex-wrap">
-                {/* Search */}
+            <div className="bg-white rounded-xl p-4 shadow-lg">
+              <h2 className="text-lg font-bold text-gray-800 mb-3">Service History</h2>
+              
+              {/* Filters - stack on mobile */}
+              <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="text-xs text-gray-500 block">Search Customer</label>
+                  <label className="text-xs text-gray-500 block mb-1">Search</label>
                   <input
                     type="text"
-                    placeholder="🔍 Customer name..."
+                    placeholder="🔍 Customer..."
                     value={historySearch}
                     onChange={e => setHistorySearch(e.target.value)}
-                    className="px-3 py-2 border rounded-lg text-sm w-40"
+                    className="w-full px-3 py-2 border rounded-lg text-base"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block">Filter Date</label>
+                  <label className="text-xs text-gray-500 block mb-1">Date</label>
                   <input
                     type="date"
                     value={historyDateFilter}
                     onChange={e => setHistoryDateFilter(e.target.value)}
-                    className="px-3 py-2 border rounded-lg text-sm"
+                    className="w-full px-3 py-2 border rounded-lg text-base"
                   />
                 </div>
+              </div>
+              
+              <div className="flex justify-between items-center">
                 {(historySearch || historyDateFilter) && (
                   <button
                     onClick={() => { setHistorySearch(''); setHistoryDateFilter(''); }}
-                    className="text-xs text-blue-600 hover:underline mt-4"
+                    className="text-sm text-blue-600 active:underline"
                   >
                     Clear Filters
                   </button>
                 )}
-                <div className="text-lg font-bold text-green-600 mt-4">
+                <div className="text-lg font-bold text-green-600 ml-auto">
                   Total: ${serviceHistory
                     .filter(s => !historySearch || s.customerName.toLowerCase().includes(historySearch.toLowerCase()))
                     .filter(s => !historyDateFilter || s.date === historyDateFilter)
@@ -9861,7 +9875,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.7.3
+        v3.7.4
       </div>
     </div>
   );
