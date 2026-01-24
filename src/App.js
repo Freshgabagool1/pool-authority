@@ -3651,7 +3651,7 @@ Best regards,
 
       {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50 safe-area-bottom">
-        <div className="flex justify-around items-center py-2 px-1">
+        <div className="flex justify-around items-center py-1 px-1">
           {(isAdminMode ? [
             { key: 'home', label: 'Home', icon: Icons.Home },
             { key: 'routes', label: 'Routes', icon: Icons.Map },
@@ -3660,7 +3660,7 @@ Best regards,
             { key: 'more', label: 'More', icon: Icons.Menu },
           ] : [
             { key: 'routes', label: 'Routes', icon: Icons.Map },
-            { key: 'watertest', label: 'Water Test', icon: Icons.Beaker },
+            { key: 'watertest', label: 'Calculator', icon: Icons.Beaker },
             { key: 'calendar', label: 'Calendar', icon: Icons.Calendar },
             { key: 'admin', label: 'Admin', icon: Icons.Settings },
           ]).map(({ key, label, icon: Icon }) => (
@@ -3668,24 +3668,24 @@ Best regards,
               <button
                 key={key}
                 onClick={() => setShowPINEntry(true)}
-                className="flex flex-col items-center px-3 py-1 rounded-lg text-gray-600"
+                className="flex flex-col items-center py-2 px-4 rounded-lg text-gray-600 active:bg-gray-100"
               >
-                <div className="p-1.5 rounded-lg">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div className="p-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
-                <span className="text-xs mt-1 font-medium">{label}</span>
+                <span className="text-xs font-medium">{label}</span>
               </button>
             ) :
             key === 'more' ? (
               <div key={key} className="relative">
                 <button
                   onClick={() => setShowMobileMenu(!showMobileMenu)}
-                  className={`flex flex-col items-center px-3 py-1 rounded-lg ${
+                  className={`flex flex-col items-center py-2 px-4 rounded-lg active:bg-gray-100 ${
                     showMobileMenu ? 'text-blue-600' : 'text-gray-600'
                   }`}
                 >
                   <Icon />
-                  <span className="text-xs mt-1">{label}</span>
+                  <span className="text-xs font-medium">{label}</span>
                 </button>
                 
                 {/* More Menu Popup */}
@@ -3699,7 +3699,7 @@ Best regards,
                           setShowMobileMenu(false);
                         }}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left ${
-                          activeTab === key ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+                          activeTab === key ? 'bg-blue-50 text-blue-700' : 'text-gray-700 active:bg-gray-50'
                         }`}
                       >
                         <TabIcon />
@@ -3716,16 +3716,16 @@ Best regards,
                   setActiveTab(key);
                   setShowMobileMenu(false);
                 }}
-                className={`flex flex-col items-center px-3 py-1 rounded-lg transition-all ${
+                className={`flex flex-col items-center py-2 px-4 rounded-lg transition-all active:bg-gray-100 ${
                   activeTab === key
                     ? 'text-blue-600'
                     : 'text-gray-600'
                 }`}
               >
-                <div className={`p-1.5 rounded-lg ${activeTab === key ? 'bg-blue-100' : ''}`}>
+                <div className={`p-1 rounded-lg ${activeTab === key ? 'bg-blue-100' : ''}`}>
                   <Icon />
                 </div>
-                <span className="text-xs mt-1 font-medium">{label}</span>
+                <span className="text-xs font-medium">{label}</span>
               </button>
             )
           ))}
@@ -4179,7 +4179,7 @@ Best regards,
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => setShowMap(!showMap)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-white/20 rounded-lg text-sm font-medium"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/20 rounded-lg text-sm font-medium active:bg-white/30"
                     >
                       <Icons.Map />
                       {showMap ? 'Hide Map' : 'Show Map'}
@@ -4188,7 +4188,7 @@ Best regards,
                       href={getGoogleMapsRouteUrl()}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-500 rounded-lg text-sm font-medium"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-500 rounded-lg text-sm font-bold active:bg-green-600"
                     >
                       <Icons.Navigation />
                       Navigate
@@ -4631,12 +4631,12 @@ Best regards,
                             </div>
                           </div>
                         </div>
-                        <div className="flex gap-2 mt-3 ml-13">
+                        <div className="flex gap-2 mt-3">
                           <a
                             href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customer.address)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-center text-sm font-medium"
+                            className="flex-1 py-3 bg-blue-50 text-blue-600 rounded-lg text-center text-sm font-medium active:bg-blue-100"
                           >
                             📍 Navigate
                           </a>
@@ -4652,14 +4652,14 @@ Best regards,
                                   setShowCompleteJobModal(true);
                                 }
                               }}
-                              className="flex-1 py-2 bg-purple-600 text-white rounded-lg text-center text-sm font-medium"
+                              className="flex-1 py-3 bg-purple-600 text-white rounded-lg text-center text-sm font-bold active:bg-purple-700"
                             >
                               ✓ Complete Job
                             </button>
                           ) : (
                             <button
                               onClick={() => completeService(customer)}
-                              className="flex-1 py-2 bg-green-600 text-white rounded-lg text-center text-sm font-medium"
+                              className="flex-1 py-3 bg-green-600 text-white rounded-lg text-center text-sm font-bold active:bg-green-700"
                             >
                               ✓ Complete
                             </button>
@@ -4771,7 +4771,7 @@ Best regards,
                 </div>
                 
                 {/* Reading Rows */}
-                <div className="space-y-1">
+                <div className="space-y-2">
                   {[
                     { key: 'freeChlorine', targetKey: 'freeChlorine', label: 'Free Chlorine (FC)', unit: 'ppm', step: '0.1' },
                     { key: 'pH', targetKey: 'pH', label: 'pH', unit: '', step: '0.1' },
@@ -4781,14 +4781,15 @@ Best regards,
                     { key: 'salt', targetKey: 'salt', label: 'Salt', unit: 'ppm' },
                     { key: 'phosphates', targetKey: null, label: 'Phosphates', unit: 'ppb' },
                   ].map(({ key, targetKey, label, unit, step }) => (
-                    <div key={key} className="grid grid-cols-3 gap-1 items-center">
+                    <div key={key} className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600 truncate pr-1">{label}</label>
                       <input
                         type="number"
+                        inputMode="decimal"
                         step={step || '1'}
                         value={waterTestReadings[key]}
                         onChange={(e) => setWaterTestReadings({...waterTestReadings, [key]: e.target.value})}
-                        className="px-2 py-1.5 border rounded text-center font-bold text-sm bg-blue-50 focus:bg-blue-100 focus:border-blue-500 focus:outline-none"
+                        className="px-2 py-2.5 border rounded text-center font-bold text-base bg-blue-50 focus:bg-blue-100 focus:border-blue-500 focus:outline-none"
                         placeholder="-"
                       />
                       {targetKey ? (
@@ -4797,10 +4798,10 @@ Best regards,
                           step={step || '1'}
                           value={waterTestTargets[targetKey]}
                           onChange={(e) => setWaterTestTargets({...waterTestTargets, [targetKey]: parseFloat(e.target.value) || 0})}
-                          className="px-2 py-1.5 border rounded text-center font-bold text-sm bg-green-50 focus:bg-green-100 focus:border-green-500 focus:outline-none"
+                          className="px-2 py-2.5 border rounded text-center font-bold text-base bg-green-50 focus:bg-green-100 focus:border-green-500 focus:outline-none"
                         />
                       ) : (
-                        <div className="px-2 py-1.5 text-center text-xs text-gray-400">&lt; 500</div>
+                        <div className="px-2 py-2.5 text-center text-xs text-gray-400">&lt; 500</div>
                       )}
                     </div>
                   ))}
@@ -6876,7 +6877,7 @@ Best regards,
                     <div>
                       <label className="block text-xs text-gray-600 mb-1">Chlorine Type</label>
                       <select value={serviceChlorineType} onChange={e => setServiceChlorineType(e.target.value)}
-                        className="w-full px-2 py-1 border rounded text-xs">
+                        className="w-full px-2 py-2 border rounded text-sm">
                         <option value="liquid12">Liquid 12.5%</option>
                         <option value="liquid10">Liquid 10%</option>
                         <option value="calHypo68">Cal-Hypo 68%</option>
@@ -6887,7 +6888,7 @@ Best regards,
                     <div>
                       <label className="block text-xs text-gray-600 mb-1">Acid Type</label>
                       <select value={serviceAcidType} onChange={e => setServiceAcidType(e.target.value)}
-                        className="w-full px-2 py-1 border rounded text-xs">
+                        className="w-full px-2 py-2 border rounded text-sm">
                         <option value="muriatic">Muriatic Acid</option>
                         <option value="dryAcid">Dry Acid</option>
                       </select>
@@ -6895,87 +6896,87 @@ Best regards,
                   </div>
                   
                   {/* Temperature */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="text-xs text-gray-600 w-16">🌡️ Temp</label>
-                    <input type="number" placeholder="78" value={serviceWaterTest.temp}
+                  <div className="flex items-center gap-2 mb-3">
+                    <label className="text-sm text-gray-600 w-16">🌡️ Temp</label>
+                    <input type="number" inputMode="decimal" placeholder="78" value={serviceWaterTest.temp}
                       onChange={e => setServiceWaterTest({ ...serviceWaterTest, temp: e.target.value })}
-                      className="w-20 px-2 py-1 border rounded text-center font-bold bg-orange-50 text-sm" />
-                    <span className="text-xs text-gray-500">°F</span>
+                      className="w-24 px-2 py-2 border rounded text-center font-bold bg-orange-50 text-base" />
+                    <span className="text-sm text-gray-500">°F</span>
                   </div>
 
                   {/* Headers */}
-                  <div className="grid grid-cols-3 gap-1 mb-1 text-xs text-center">
+                  <div className="grid grid-cols-3 gap-2 mb-2 text-xs text-center">
                     <div></div>
-                    <div className="font-bold text-blue-700">Current</div>
-                    <div className="font-bold text-green-700">Target</div>
+                    <div className="font-bold text-blue-700 bg-blue-100 rounded py-1">Current</div>
+                    <div className="font-bold text-green-700 bg-green-100 rounded py-1">Target</div>
                   </div>
                   
                   {/* Reading Rows */}
-                  <div className="space-y-1">
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">FC (ppm)</label>
-                      <input type="number" step="0.1" value={serviceWaterTest.chlorine}
+                      <input type="number" inputMode="decimal" step="0.1" value={serviceWaterTest.chlorine}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, chlorine: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" step="0.1" value={serviceWaterTarget.chlorine}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" step="0.1" value={serviceWaterTarget.chlorine}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, chlorine: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">pH</label>
-                      <input type="number" step="0.1" value={serviceWaterTest.ph}
+                      <input type="number" inputMode="decimal" step="0.1" value={serviceWaterTest.ph}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, ph: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" step="0.1" value={serviceWaterTarget.ph}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" step="0.1" value={serviceWaterTarget.ph}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, ph: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">TA (ppm)</label>
-                      <input type="number" value={serviceWaterTest.alkalinity}
+                      <input type="number" inputMode="decimal" value={serviceWaterTest.alkalinity}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, alkalinity: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" value={serviceWaterTarget.alkalinity}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" value={serviceWaterTarget.alkalinity}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, alkalinity: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">CYA (ppm)</label>
-                      <input type="number" value={serviceWaterTest.cya}
+                      <input type="number" inputMode="decimal" value={serviceWaterTest.cya}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, cya: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" value={serviceWaterTarget.cya}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" value={serviceWaterTarget.cya}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, cya: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">Calcium</label>
-                      <input type="number" value={serviceWaterTest.hardness}
+                      <input type="number" inputMode="decimal" value={serviceWaterTest.hardness}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, hardness: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" value={serviceWaterTarget.hardness}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" value={serviceWaterTarget.hardness}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, hardness: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
                     {serviceToComplete?.isSaltPool && (
-                      <div className="grid grid-cols-3 gap-1 items-center">
+                      <div className="grid grid-cols-3 gap-2 items-center">
                         <label className="text-xs text-gray-600">🧂 Salt</label>
-                        <input type="number" value={serviceWaterTest.salt}
+                        <input type="number" inputMode="decimal" value={serviceWaterTest.salt}
                           onChange={e => setServiceWaterTest({ ...serviceWaterTest, salt: e.target.value })}
-                          className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                        <input type="number" value={serviceWaterTarget.salt}
+                          className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                        <input type="number" inputMode="decimal" value={serviceWaterTarget.salt}
                           onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, salt: e.target.value })}
-                          className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                          className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-1 items-center">
+                    <div className="grid grid-cols-3 gap-2 items-center">
                       <label className="text-xs text-gray-600">Phos (ppb)</label>
-                      <input type="number" value={serviceWaterTest.phosphates}
+                      <input type="number" inputMode="decimal" value={serviceWaterTest.phosphates}
                         onChange={e => setServiceWaterTest({ ...serviceWaterTest, phosphates: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-blue-50" />
-                      <input type="number" value={serviceWaterTarget.phosphates}
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-blue-50" />
+                      <input type="number" inputMode="decimal" value={serviceWaterTarget.phosphates}
                         onChange={e => setServiceWaterTarget({ ...serviceWaterTarget, phosphates: e.target.value })}
-                        className="px-1 py-1 border rounded text-center font-bold text-sm bg-green-50" />
+                        className="px-2 py-2 border rounded text-center font-bold text-base bg-green-50" />
                     </div>
                   </div>
                   
@@ -9860,7 +9861,7 @@ Best regards,
       
       {/* Version Footer */}
       <div className="fixed bottom-2 right-2 text-xs text-gray-400 bg-white/80 px-2 py-1 rounded">
-        v3.7.2
+        v3.7.3
       </div>
     </div>
   );
